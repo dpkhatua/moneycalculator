@@ -1,4 +1,3 @@
-
 const STORAGE_KEY = 'spendingTracker.transactions.v1';
 const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
@@ -512,7 +511,11 @@ async function findDriveFile(){
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime)`, {
     headers:{ Authorization:'Bearer '+driveAccessToken }
   });
-  if(!res.ok) throw new Error('Drive list failed');
+  if(!res.ok){
+    let detail = 'HTTP '+res.status;
+    try{ const errJson = await res.json(); if(errJson.error && errJson.error.message) detail = errJson.error.message; } catch(e){}
+    throw new Error(detail);
+  }
   const data = await res.json();
   return (data.files && data.files[0]) || null;
 }
@@ -544,12 +547,16 @@ async function pushToDrive(silent){
       if(silent) fetchDriveUserInfo(); else alert('Backed up to Google Drive.');
       return true;
     } else {
-      if(!silent) alert('Backup failed (HTTP '+res.status+'). Try reconnecting.');
+      let detail = 'HTTP '+res.status;
+      try{ const errJson = await res.json(); if(errJson.error && errJson.error.message) detail = errJson.error.message; } catch(e){}
+      if(!silent) alert('Backup failed: '+detail);
+      else setDriveStatus('Backup failed: '+detail);
       return false;
     }
   } catch(e){
     driveSyncing = false;
-    if(!silent) alert('Backup failed — check your connection and try again.');
+    const msg = 'Backup failed: '+(e && e.message ? e.message : 'unknown error');
+    if(!silent) alert(msg); else setDriveStatus(msg);
     return false;
   }
 }
@@ -561,7 +568,12 @@ async function pullFromDrive(silent){
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
       headers:{ Authorization:'Bearer '+driveAccessToken }
     });
-    if(!res.ok){ if(!silent) alert('Restore failed (HTTP '+res.status+').'); return; }
+    if(!res.ok){
+      let detail = 'HTTP '+res.status;
+      try{ const errJson = await res.json(); if(errJson.error && errJson.error.message) detail = errJson.error.message; } catch(e){}
+      if(!silent) alert('Restore failed: '+detail); else setDriveStatus('Restore failed: '+detail);
+      return;
+    }
     const data = await res.json();
     const incoming = Array.isArray(data.transactions) ? data.transactions : [];
     const existingIds = new Set(transactions.map(t=>t.id));
@@ -579,7 +591,8 @@ async function pullFromDrive(silent){
     if(!silent) alert(added>0 ? `Restored ${added} new transaction(s) from Drive.` : 'Already up to date with Drive.');
     else fetchDriveUserInfo();
   } catch(e){
-    if(!silent) alert('Restore failed — check your connection and try again.');
+    const msg = 'Restore failed: '+(e && e.message ? e.message : 'unknown error');
+    if(!silent) alert(msg); else setDriveStatus(msg);
   }
 }
 
