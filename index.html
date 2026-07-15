@@ -321,15 +321,14 @@
     <button data-panel="budget">10 · Budget (50/30/20)</button>
     <button data-panel="networth">11 · Net Worth</button>
     <button data-panel="savgoal">12 · Savings Goal</button>
-    <button data-panel="mf">13 · Mutual Fund Returns</button>
-    <button data-panel="ssy">14 · Sukanya Samriddhi</button>
-    <button data-panel="tax">15 · Income Tax</button>
-    <button data-panel="ppf">16 · PPF</button>
-    <button data-panel="epf">17 · EPF</button>
-    <button data-panel="emi">18 · EMI</button>
-    <button data-panel="gst">19 · GST</button>
-    <button data-panel="xirr">20 · XIRR</button>
-    <button data-panel="inflation">21 · Inflation</button>
+    <button data-panel="ssy">13 · Sukanya Samriddhi</button>
+    <button data-panel="tax">14 · Income Tax</button>
+    <button data-panel="ppf">15 · PPF</button>
+    <button data-panel="epf">16 · EPF</button>
+    <button data-panel="emi">17 · EMI</button>
+    
+    
+    
   </div>
 </nav>
 
@@ -832,45 +831,6 @@
     </div>
   </section>
 
-  <!-- Mutual Fund Returns -->
-  <section class="panel" id="panel-mf">
-    <div class="panel-head"><span class="num">13</span><h2>Mutual Fund Returns Calculator</h2></div>
-    <p class="panel-desc">Work out what a fund actually returned, in both absolute and annualized terms, from what you put in and what it's worth now.</p>
-    <div class="calc-grid">
-      <div class="calc-inputs">
-        <div class="field">
-          <label>Amount invested <span class="val" id="mfInvestedLabel">₹1,00,000</span></label>
-          <div class="inline-num">
-            <input type="number" id="mfInvested" min="0" step="1000" value="100000">
-            <input type="range" id="mfInvestedRange" min="1000" max="10000000" step="1000" value="100000">
-          </div>
-        </div>
-        <div class="field">
-          <label>Current value <span class="val" id="mfCurrentLabel">₹1,45,000</span></label>
-          <div class="inline-num">
-            <input type="number" id="mfCurrent" min="0" step="1000" value="145000">
-            <input type="range" id="mfCurrentRange" min="1000" max="10000000" step="1000" value="145000">
-          </div>
-        </div>
-        <div class="field">
-          <label>Holding period (months) <span class="val" id="mfMonthsLabel">18 mo</span></label>
-          <div class="inline-num">
-            <input type="number" id="mfMonths" min="1" step="1" value="18">
-            <input type="range" id="mfMonthsRange" min="1" max="240" step="1" value="18">
-          </div>
-        </div>
-      </div>
-      <div class="calc-results">
-        <div class="result-row">
-          <div class="result-figure small"><div class="label">Absolute return</div><div class="value" id="mfAbsolute">0%</div></div>
-          <div class="result-figure small"><div class="label">Annualized (CAGR)</div><div class="value" id="mfCagr">0%</div></div>
-        </div>
-        <div class="result-figure"><div class="label">Profit</div><div class="value" id="mfProfit">₹0</div></div>
-        <div class="chart-wrap"><canvas id="mfChart"></canvas></div>
-        <div class="footnote">Absolute return ignores time; CAGR normalizes it to a per-year figure so funds held for different lengths of time can be compared fairly.</div>
-      </div>
-    </div>
-  </section>
 
   <!-- Sukanya Samriddhi Yojana -->
   <section class="panel" id="panel-ssy">
@@ -1067,103 +1027,7 @@
     </div>
   </section>
 
-  <!-- GST -->
-  <section class="panel" id="panel-gst">
-    <div class="panel-head"><span class="num">19</span><h2>GST Calculator</h2><span class="badge-tag">Slabs: 0/5/18/40%, post GST 2.0</span></div>
-    <p class="panel-desc">Add GST to a base price, or pull GST back out of a price that already includes it. India moved to a simplified 5% / 18% (plus 40% on luxury &amp; sin goods) structure from 22 September 2025.</p>
-    <div class="calc-grid">
-      <div class="calc-inputs">
-        <div class="field plain">
-          <label>Amount</label>
-          <div class="numwrap"><span>₹</span><input type="number" id="gstAmount" min="0" step="100" value="10000"></div>
-        </div>
-        <div class="field">
-          <label>GST rate</label>
-          <select id="gstRate" class="plain-select">
-            <option value="0">0% — Nil-rated / exempt</option>
-            <option value="5">5% — Essentials</option>
-            <option value="18" selected>18% — Standard</option>
-            <option value="40">40% — Luxury / sin goods</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Direction</label>
-          <div class="radio-row">
-            <label><input type="radio" name="gstMode" value="add" checked> Add GST to amount</label>
-            <label><input type="radio" name="gstMode" value="remove"> Amount already includes GST</label>
-          </div>
-        </div>
-      </div>
-      <div class="calc-results">
-        <div class="result-row">
-          <div class="result-figure small"><div class="label" id="gstBaseLabel">Base amount</div><div class="value" id="gstBase">₹0</div></div>
-          <div class="result-figure small"><div class="label">GST amount</div><div class="value" id="gstTax">₹0</div></div>
-        </div>
-        <div class="result-figure"><div class="label" id="gstTotalLabel">Total (incl. GST)</div><div class="value" id="gstTotal">₹0</div></div>
-        <div class="chart-wrap"><canvas id="gstChart"></canvas></div>
-        <div class="footnote">For an intra-state sale, the GST amount splits evenly into CGST + SGST; for inter-state, the same total is charged as IGST.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- XIRR -->
-  <section class="panel" id="panel-xirr">
-    <div class="panel-head"><span class="num">20</span><h2>XIRR Calculator</h2></div>
-    <p class="panel-desc">The annualized return across cash flows on irregular dates — several SIP instalments and one withdrawal, for instance — where a plain CAGR won't work.</p>
-    <div class="calc-grid">
-      <div class="calc-inputs">
-        <div class="subhead">Cash flows — negative for money out, positive for money in</div>
-        <div class="row-list" id="xirrRows"></div>
-        <button class="add-row" id="xirrAddRow" type="button">+ Add cash flow</button>
-      </div>
-      <div class="calc-results">
-        <div class="result-row">
-          <div class="result-figure"><div class="label">XIRR</div><div class="value" id="xirrResult">—</div></div>
-        </div>
-        <div class="chart-wrap"><canvas id="xirrChart"></canvas></div>
-        <div class="footnote">Solved numerically (bisection on the cash-flow NPV). Needs at least one negative and one positive amount to converge.</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Inflation -->
-  <section class="panel" id="panel-inflation">
-    <div class="panel-head"><span class="num">21</span><h2>Inflation Calculator</h2></div>
-    <p class="panel-desc">See both directions at once: what today's amount will cost in the future, and what a future amount is really worth today once inflation eats into it.</p>
-    <div class="calc-grid">
-      <div class="calc-inputs">
-        <div class="field">
-          <label>Amount <span class="val" id="inflAmtLabel">₹1,00,000</span></label>
-          <div class="inline-num">
-            <input type="number" id="inflAmt" min="0" step="1000" value="100000">
-            <input type="range" id="inflAmtRange" min="1000" max="10000000" step="1000" value="100000">
-          </div>
-        </div>
-        <div class="field">
-          <label>Annual inflation rate <span class="val" id="inflRateLabel">6%</span></label>
-          <div class="inline-num">
-            <input type="number" id="inflRate" min="0" step="0.1" value="6">
-            <input type="range" id="inflRateRange" min="1" max="15" step="0.1" value="6">
-          </div>
-        </div>
-        <div class="field">
-          <label>Number of years <span class="val" id="inflYrsLabel">10 yr</span></label>
-          <div class="inline-num">
-            <input type="number" id="inflYrs" min="0" step="1" value="10">
-            <input type="range" id="inflYrsRange" min="1" max="50" step="1" value="10">
-          </div>
-        </div>
-      </div>
-      <div class="calc-results">
-        <div class="result-row">
-          <div class="result-figure small"><div class="label">Future cost of this amount</div><div class="value brick" id="inflFuture">₹0</div></div>
-          <div class="result-figure small"><div class="label">Today's-money value in year N</div><div class="value" id="inflPresent">₹0</div></div>
-        </div>
-        <div class="chart-wrap"><canvas id="inflChart"></canvas></div>
-        <div class="footnote">Future cost = amount × (1+inflation)ⁿ. Today's-money value = amount ÷ (1+inflation)ⁿ — how much of today's purchasing power the same rupee figure would have N years out.</div>
-      </div>
-    </div>
-  </section>
+  
 
 </main>
 
