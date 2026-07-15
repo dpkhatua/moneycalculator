@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spending Tracker — The Compound Ledger</title>
+<meta name="description" content="A private, offline spending tracker. Your data stays on this device.">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; base-uri 'self'; form-action 'self'; object-src 'none';">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F6F50">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Spending Tracker">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<script src="chart.min.js"></script>
+<style>
+  :root{
+    --paper:#EAEFE6;
+    --paper-raised:#F5F7F0;
+    --ink:#1B2A22;
+    --ink-soft:#4B5A50;
+    --rule:#c7cdb9;
+    --green:#1F6F50;
+    --green-deep:#153F30;
+    --mustard:#C98A2C;
+    --brick:#A2452F;
+    --shadow: 0 1px 0 rgba(27,42,34,0.06);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--paper),var(--paper)),
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(27,42,34,0.05) 28px),
+      repeating-linear-gradient(90deg, transparent, transparent 27px, rgba(27,42,34,0.035) 28px);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;} }
+  a{color:inherit;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px;}
+
+  header.hero{ padding:48px 0 32px; border-bottom:1px solid var(--rule); }
+  .masthead{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    margin-bottom:36px;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;
+    letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-soft);
+  }
+  .masthead .mark{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:600;}
+  .mark .dot{width:9px;height:9px;border-radius:50%;background:var(--green);display:inline-block;}
+  .masthead a.back{color:var(--ink-soft);text-decoration:none;border-bottom:1px dashed var(--rule);}
+  .masthead a.back:hover{color:var(--ink);border-color:var(--ink-soft);}
+  .hero h1{
+    font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-optical-sizing:auto;font-weight:600;
+    font-size:clamp(2rem,4.6vw,3.4rem);line-height:1.05;margin:0 0 14px;letter-spacing:-0.01em;
+  }
+  .hero h1 em{font-style:italic;color:var(--green);}
+  .hero p.sub{max-width:600px;font-size:16px;line-height:1.55;color:var(--ink-soft);margin:0;}
+  .privacy-note{
+    display:flex;gap:10px;align-items:flex-start;margin-top:22px;padding:14px 16px;
+    background:var(--paper-raised);border:1px solid var(--rule);border-left:3px solid var(--mustard);
+    font-size:13.5px;line-height:1.5;color:var(--ink-soft);max-width:680px;
+  }
+  .privacy-note b{color:var(--ink);}
+
+  main{padding:36px 0 80px;}
+
+  /* Summary cards */
+  .summary-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+    border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:36px;
+  }
+  @media (max-width:800px){ .summary-grid{grid-template-columns:repeat(2,1fr);} }
+  .summary-card{padding:22px 20px;border-right:1px solid var(--rule);}
+  .summary-card:last-child{border-right:none;}
+  @media (max-width:800px){ .summary-card:nth-child(2){border-right:none;} .summary-card:nth-child(odd){border-right:1px solid var(--rule);} }
+  .summary-card .label{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;}
+  .summary-card .value{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;font-size:1.5rem;color:var(--green-deep);}
+  .summary-card .value.brick{color:var(--brick);}
+
+  /* Section headers */
+  .section-head{display:flex;align-items:baseline;gap:16px;margin:0 0 6px;flex-wrap:wrap;justify-content:space-between;}
+  .section-head h2{font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-weight:600;font-size:1.5rem;margin:0;}
+  .section-desc{color:var(--ink-soft);font-size:14px;margin:6px 0 20px;}
+
+  /* Form */
+  .tracker-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:0;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:44px;}
+  @media (max-width:820px){ .tracker-grid{grid-template-columns:1fr;} }
+  .form-col{padding:28px;border-right:1px solid var(--rule);}
+  @media (max-width:820px){ .form-col{border-right:none;border-bottom:1px solid var(--rule);} }
+  .list-col{padding:28px;display:flex;flex-direction:column;}
+
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:6px;font-weight:500;}
+  .field input, .field select{
+    width:100%;padding:10px 12px;border:1px solid var(--rule);background:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:var(--ink);
+  }
+  .field input[type=number]{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;}
+  .type-toggle{display:flex;gap:8px;margin-bottom:16px;}
+  .type-toggle button{
+    flex:1;padding:10px;border:1px solid var(--rule);background:#fff;cursor:pointer;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .type-toggle button.active[data-type="expense"]{background:var(--brick);color:#fff;border-color:var(--brick);}
+  .type-toggle button.active[data-type="income"]{background:var(--green);color:#fff;border-color:var(--green);}
+  .btn-primary{
+    width:100%;padding:12px;border:none;background:var(--green-deep);color:#fff;cursor:pointer;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;
+  }
+  .btn-primary:hover{background:var(--green);}
+  .btn-secondary{
+    padding:9px 14px;border:1px solid var(--rule);background:#fff;color:var(--ink);cursor:pointer;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;font-weight:600;letter-spacing:0.02em;
+  }
+  .btn-secondary:hover{background:var(--paper);}
+  .form-note{font-size:12px;color:var(--ink-soft);margin-top:14px;line-height:1.5;}
+
+  /* Filter bar */
+  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;}
+  .filter-bar select, .filter-bar input{
+    padding:8px 10px;border:1px solid var(--rule);background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:var(--ink);
+  }
+  .filter-bar .spacer{flex:1;}
+
+  /* Transaction list */
+  .tx-list{flex:1;overflow-y:auto;max-height:520px;border-top:1px solid var(--rule);}
+  .tx-row{
+    display:grid;grid-template-columns:80px 1fr auto auto;gap:10px;align-items:center;
+    padding:11px 4px;border-bottom:1px solid var(--rule);font-size:13.5px;
+  }
+  .tx-row .tx-date{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11.5px;color:var(--ink-soft);}
+  .tx-row .tx-main{min-width:0;}
+  .tx-row .tx-cat{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10.5px;letter-spacing:0.03em;text-transform:uppercase;color:var(--mustard);display:block;margin-bottom:2px;}
+  .tx-row .tx-desc{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tx-row .tx-amt{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;white-space:nowrap;}
+  .tx-row .tx-amt.income{color:var(--green-deep);}
+  .tx-row .tx-amt.expense{color:var(--brick);}
+  .tx-row .tx-actions{display:flex;gap:4px;}
+  .tx-row .tx-actions button{
+    background:none;border:1px solid var(--rule);width:26px;height:26px;cursor:pointer;font-size:12px;color:var(--ink-soft);
+  }
+  .tx-row .tx-actions button:hover{background:var(--paper);color:var(--ink);}
+  .empty-state{padding:40px 4px;text-align:center;color:var(--ink-soft);font-size:14px;}
+
+  /* Charts section */
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:44px;}
+  @media (max-width:820px){ .charts-grid{grid-template-columns:1fr;} }
+  .chart-col{padding:28px;border-right:1px solid var(--rule);}
+  @media (max-width:820px){ .chart-col{border-right:none;border-bottom:1px solid var(--rule);} }
+  .chart-col h3{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 16px;}
+  .chart-wrap{height:240px;}
+
+  /* Data management */
+  .data-actions{display:flex;gap:10px;flex-wrap:wrap;padding:24px 28px;border:1px solid var(--rule);background:var(--paper-raised);}
+  .data-actions .danger{border-color:var(--brick);color:var(--brick);}
+  .data-actions .danger:hover{background:rgba(162,69,47,0.06);}
+
+  .drive-box{padding:24px 28px;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:20px;}
+  .drive-box .setup-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+  .drive-box input[type=text]{
+    flex:1;min-width:220px;padding:9px 11px;border:1px solid var(--rule);background:#fff;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;color:var(--ink);
+  }
+  .drive-status{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;color:var(--ink-soft);margin:12px 0;}
+  .drive-status.connected{color:var(--green-deep);}
+  details.drive-setup{margin-bottom:16px;font-size:13.5px;color:var(--ink-soft);}
+  details.drive-setup summary{cursor:pointer;color:var(--ink);font-weight:500;margin-bottom:8px;}
+  details.drive-setup ol{margin:10px 0 0;padding-left:20px;line-height:1.7;}
+  details.drive-setup code{background:#fff;border:1px solid var(--rule);padding:1px 5px;font-size:12px;}
+
+  footer{border-top:1px solid var(--rule);padding:28px 0 60px;margin-top:44px;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;color:var(--ink-soft);}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="masthead">
+      <div class="mark"><span class="dot"></span> Money Calculator for Indians made with Love ❤️</div>
+      <a class="back" href="index.html">← Back to calculators</a>
+    </div>
+    <h1>Track every rupee, <em>quietly</em>.</h1>
+    <p class="sub">Log what comes in and what goes out. No account, no server — everything is written straight to this browser's storage on this device.</p>
+    <div class="privacy-note">
+      <span>🔒</span>
+      <span><b>Your data never leaves this device.</b> It's saved in this browser's local storage, so it won't appear on another phone, laptop, or browser automatically. Use <b>Export backup</b> below to save a copy, and <b>Import backup</b> to bring it into another device or browser.</span>
+    </div>
+    <div class="privacy-note">
+      <span>📲</span>
+      <span><b>Add this to your home screen for the smoothest mobile experience.</b> It'll open full-screen like an app and keeps working without signal once loaded. <b>iPhone (Safari):</b> tap Share → Add to Home Screen. <b>Android (Chrome):</b> tap ⋮ → Add to Home screen / Install app.</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- Summary -->
+  <div id="backupReminder" style="display:none;margin-bottom:20px;padding:12px 16px;background:#fdf3e7;border:1px solid var(--mustard);font-size:13.5px;color:var(--ink);">
+    ⏰ It's been a while since your last backup. <button class="btn-secondary" id="reminderExportBtn" style="margin-left:8px;">Export backup now</button>
+    <button class="btn-secondary" id="reminderDismiss" style="margin-left:6px;">Dismiss</button>
+  </div>
+  <div class="summary-grid">
+    <div class="summary-card"><div class="label">This month — income</div><div class="value" id="sumMonthIncome">₹0</div></div>
+    <div class="summary-card"><div class="label">This month — expenses</div><div class="value brick" id="sumMonthExpense">₹0</div></div>
+    <div class="summary-card"><div class="label">This month — net</div><div class="value" id="sumMonthNet">₹0</div></div>
+    <div class="summary-card"><div class="label">All-time balance</div><div class="value" id="sumAllBalance">₹0</div></div>
+  </div>
+
+  <!-- Add + list -->
+  <div class="section-head"><h2>Log &amp; transactions</h2></div>
+  <p class="section-desc">Add a transaction on the left; everything you've logged shows up on the right, newest first.</p>
+  <div class="tracker-grid">
+    <div class="form-col">
+      <div class="type-toggle">
+        <button type="button" data-type="expense" class="active" id="typeExpenseBtn">Expense</button>
+        <button type="button" data-type="income" id="typeIncomeBtn">Income</button>
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="txDate">
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <select id="txCategory"></select>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <input type="text" id="txDesc" placeholder="e.g. Groceries, Uber, Salary" maxlength="200">
+      </div>
+      <div class="field">
+        <label>Amount</label>
+        <input type="number" id="txAmount" min="0" step="1" placeholder="0">
+      </div>
+      <button class="btn-primary" id="txSubmit">Add transaction</button>
+      <div class="form-note" id="editNote"></div>
+    </div>
+    <div class="list-col">
+      <div class="filter-bar">
+        <select id="filterMonth"></select>
+        <select id="filterCategory"><option value="">All categories</option></select>
+        <span class="spacer"></span>
+        <span id="txCount" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;color:var(--ink-soft);"></span>
+      </div>
+      <div class="tx-list" id="txList"></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="section-head"><h2>Where it's going</h2></div>
+  <p class="section-desc">Based on whatever month is selected in the filter above.</p>
+  <div class="charts-grid">
+    <div class="chart-col">
+      <h3>Expenses by category</h3>
+      <div class="chart-wrap"><canvas id="categoryChart"></canvas></div>
+    </div>
+    <div class="chart-col">
+      <h3>Income vs. expenses, last 6 months</h3>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Data management -->
+  <div class="section-head"><h2>Your data</h2></div>
+  <p class="section-desc">Everything here is stored only in this browser. Back it up regularly, especially before clearing your browser data or switching devices.</p>
+
+  <div class="drive-box">
+    <details class="drive-setup">
+      <summary>☁️ Back up to Google Drive (optional, one-time setup)</summary>
+      <p>This saves an encrypted-in-transit copy of your data to a private file in <b>your own</b> Google Drive — only this app can read or write that file, and nothing is shared with anyone else, including us. It requires a free Google OAuth Client ID that only you control:</p>
+      <ol>
+        <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud Console → Credentials</a> and create a project (any name).</li>
+        <li>Enable the <b>Google Drive API</b> for that project (search for it under "APIs &amp; Services").</li>
+        <li>Configure the <b>OAuth consent screen</b> as "External", add your own Gmail address as a test user, and keep it in "Testing" mode — no Google review needed for personal use.</li>
+        <li>Create an <b>OAuth Client ID</b> of type "Web application". Under "Authorized JavaScript origins", add the exact URL this page is hosted at (e.g. <code>https://yourusername.github.io</code>).</li>
+        <li>Copy the Client ID (ends in <code>.apps.googleusercontent.com</code>) and paste it below.</li>
+      </ol>
+      <p>Nothing here is secret — a Client ID on its own can't access your data without you approving the sign-in popup each time.</p>
+    </details>
+    <div class="setup-row">
+      <input type="text" id="googleClientIdInput" placeholder="Paste your Google OAuth Client ID here">
+      <button class="btn-secondary" id="saveClientId">Save</button>
+    </div>
+    <div class="drive-status" id="driveStatus">Not connected</div>
+    <div class="setup-row">
+      <button class="btn-secondary" id="connectDrive">🔗 Connect Google Drive</button>
+      <button class="btn-secondary" id="backupToDrive">⬆ Backup to Drive</button>
+      <button class="btn-secondary" id="restoreFromDrive">⬇ Restore from Drive</button>
+      <button class="btn-secondary" id="disconnectDrive">Disconnect</button>
+    </div>
+  </div>
+
+  <div class="data-actions">
+    <button class="btn-secondary" id="exportJson">⬇ Export backup (.json)</button>
+    <button class="btn-secondary" id="exportCsv">⬇ Export as CSV</button>
+    <label class="btn-secondary" style="cursor:pointer;">⬆ Import backup
+      <input type="file" id="importFile" accept=".json" style="display:none;">
+    </label>
+    <button class="btn-secondary danger" id="clearAll">🗑 Clear all data</button>
+  </div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Built as a static page — your transactions are stored locally in this browser only and are never sent anywhere.
+    <div style="margin-top:10px;">&copy; 2026 Durga Prasad Khatua. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>
+const STORAGE_KEY = 'spendingTracker.transactions.v1';
+const CATEGORY_KEY = 'spendingTracker.categories.v1';
+
+const DEFAULT_CATEGORIES = {
+  expense: ['Food','Transport','Housing','Utilities','Shopping','Entertainment','Health','Education','Other'],
+  income: ['Salary','Business','Investment','Gift','Other']
+};
+
+let transactions = [];
+let categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+let currentType = 'expense';
+let editingId = null;
+
+function inr(n){
+  n = Math.round(n);
+  if(!isFinite(n)) n = 0;
+  const neg = n < 0;
+  n = Math.abs(n);
+  let s = n.toString();
+  let last3 = s.slice(-3);
+  let rest = s.slice(0,-3);
+  if(rest !== '') last3 = ',' + last3;
+  let formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + last3;
+  return (neg?'-':'') + '₹' + formatted;
+}
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    transactions = raw ? JSON.parse(raw) : [];
+  } catch(e){ transactions = []; }
+  try{
+    const rawCat = localStorage.getItem(CATEGORY_KEY);
+    categories = rawCat ? JSON.parse(rawCat) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  } catch(e){ categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)); }
+}
+function saveData(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+    localStorage.setItem(CATEGORY_KEY, JSON.stringify(categories));
+  } catch(e){
+    alert('Could not save — your browser storage may be full or blocked (e.g. private browsing mode).');
+  }
+}
+
+function uid(){ return 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+
+function populateCategorySelect(){
+  const sel = document.getElementById('txCategory');
+  sel.innerHTML = '';
+  categories[currentType].forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  const addOpt = document.createElement('option');
+  addOpt.value = '__add_new__'; addOpt.textContent = '+ Add new category…';
+  sel.appendChild(addOpt);
+}
+document.getElementById('txCategory').addEventListener('change', (e)=>{
+  if(e.target.value === '__add_new__'){
+    const name = prompt('New category name:');
+    if(name && name.trim()){
+      const trimmed = name.trim();
+      if(!categories[currentType].includes(trimmed)) categories[currentType].push(trimmed);
+      saveData();
+      populateCategorySelect();
+      e.target.value = trimmed;
+    } else {
+      populateCategorySelect();
+    }
+  }
+});
+
+function setType(type){
+  currentType = type;
+  document.getElementById('typeExpenseBtn').classList.toggle('active', type==='expense');
+  document.getElementById('typeIncomeBtn').classList.toggle('active', type==='income');
+  populateCategorySelect();
+}
+document.getElementById('typeExpenseBtn').addEventListener('click', ()=>setType('expense'));
+document.getElementById('typeIncomeBtn').addEventListener('click', ()=>setType('income'));
+
+function resetForm(){
+  editingId = null;
+  document.getElementById('editNote').textContent = '';
+  document.getElementById('txSubmit').textContent = 'Add transaction';
+  document.getElementById('txDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('txDesc').value = '';
+  document.getElementById('txAmount').value = '';
+  setType('expense');
+}
+
+document.getElementById('txSubmit').addEventListener('click', ()=>{
+  const date = document.getElementById('txDate').value;
+  const category = document.getElementById('txCategory').value;
+  const desc = document.getElementById('txDesc').value.trim();
+  const amount = +document.getElementById('txAmount').value;
+
+  if(!date){ alert('Pick a date.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+  if(category==='__add_new__'){ alert('Finish adding the new category first.'); return; }
+
+  if(editingId){
+    const tx = transactions.find(t=>t.id===editingId);
+    if(tx){ Object.assign(tx, {date, type:currentType, category, description:desc, amount}); }
+  } else {
+    transactions.push({ id: uid(), date, type: currentType, category, description: desc, amount });
+  }
+  saveData();
+  resetForm();
+  renderAll();
+});
+
+function startEdit(id){
+  const tx = transactions.find(t=>t.id===id);
+  if(!tx) return;
+  editingId = id;
+  setType(tx.type);
+  document.getElementById('txDate').value = tx.date;
+  document.getElementById('txDesc').value = tx.description;
+  document.getElementById('txAmount').value = tx.amount;
+  populateCategorySelect();
+  document.getElementById('txCategory').value = tx.category;
+  document.getElementById('txSubmit').textContent = 'Save changes';
+  document.getElementById('editNote').textContent = 'Editing an existing transaction — Save changes will update it in place.';
+  window.scrollTo({top: document.querySelector('.tracker-grid').offsetTop - 20, behavior:'smooth'});
+}
+function deleteTx(id){
+  if(!confirm('Delete this transaction? This can\'t be undone.')) return;
+  transactions = transactions.filter(t=>t.id!==id);
+  saveData();
+  renderAll();
+}
+
+// ---------- Filters ----------
+function monthKey(dateStr){ return dateStr.slice(0,7); } // YYYY-MM
+function populateMonthFilter(){
+  const sel = document.getElementById('filterMonth');
+  const prevValue = sel.value;
+  const months = [...new Set(transactions.map(t=>monthKey(t.date)))].sort().reverse();
+  sel.innerHTML = '<option value="__all__">All time</option>';
+  const thisMonth = new Date().toISOString().slice(0,7);
+  if(!months.includes(thisMonth)) months.unshift(thisMonth);
+  months.forEach(m=>{
+    const opt = document.createElement('option');
+    opt.value = m;
+    const [y,mo] = m.split('-');
+    const label = new Date(y, mo-1, 1).toLocaleString('en-IN', {month:'long', year:'numeric'});
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+  else sel.value = thisMonth;
+}
+function populateCategoryFilter(){
+  const sel = document.getElementById('filterCategory');
+  const prevValue = sel.value;
+  const cats = [...new Set(transactions.map(t=>t.category))].sort();
+  sel.innerHTML = '<option value="">All categories</option>';
+  cats.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  if(prevValue) sel.value = prevValue;
+}
+document.getElementById('filterMonth').addEventListener('change', renderAll);
+document.getElementById('filterCategory').addEventListener('change', renderAll);
+
+function getFilteredTx(){
+  const month = document.getElementById('filterMonth').value;
+  const cat = document.getElementById('filterCategory').value;
+  return transactions.filter(t=>{
+    if(month!=='__all__' && monthKey(t.date)!==month) return false;
+    if(cat && t.category!==cat) return false;
+    return true;
+  });
+}
+
+// ---------- Rendering ----------
+function renderSummary(){
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const monthTx = transactions.filter(t=>monthKey(t.date)===thisMonth);
+  const monthIncome = monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const monthExpense = monthTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  document.getElementById('sumMonthIncome').textContent = inr(monthIncome);
+  document.getElementById('sumMonthExpense').textContent = inr(monthExpense);
+  const netEl = document.getElementById('sumMonthNet');
+  netEl.textContent = inr(monthIncome-monthExpense);
+  netEl.classList.toggle('brick', monthIncome-monthExpense<0);
+
+  const allIncome = transactions.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const allExpense = transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const balEl = document.getElementById('sumAllBalance');
+  balEl.textContent = inr(allIncome-allExpense);
+  balEl.classList.toggle('brick', allIncome-allExpense<0);
+}
+
+function escapeHtml(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, (m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function renderList(){
+  const list = document.getElementById('txList');
+  const filtered = getFilteredTx().slice().sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  document.getElementById('txCount').textContent = filtered.length + ' transaction' + (filtered.length===1?'':'s');
+  if(filtered.length===0){
+    list.innerHTML = '<div class="empty-state">Nothing logged for this filter yet. Add a transaction on the left to get started.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  filtered.forEach(t=>{
+    const row = document.createElement('div');
+    row.className = 'tx-row';
+    const d = new Date(t.date);
+    const dateLabel = d.toLocaleDateString('en-IN', {day:'2-digit', month:'short'});
+    row.innerHTML = `
+      <div class="tx-date">${escapeHtml(dateLabel)}</div>
+      <div class="tx-main">
+        <span class="tx-cat">${escapeHtml(t.category)}</span>
+        <span class="tx-desc">${escapeHtml(t.description) || '—'}</span>
+      </div>
+      <div class="tx-amt ${t.type}">${t.type==='expense' ? '−' : '+'}${inr(t.amount)}</div>
+      <div class="tx-actions">
+        <button title="Edit" data-action="edit">✎</button>
+        <button title="Delete" data-action="delete">×</button>
+      </div>
+    `;
+    row.querySelector('[data-action=edit]').addEventListener('click', ()=>startEdit(t.id));
+    row.querySelector('[data-action=delete]').addEventListener('click', ()=>deleteTx(t.id));
+    list.appendChild(row);
+  });
+}
+
+let charts = {};
+function drawChart(id, labels, datasets, opts, type){
+  type = type || 'bar';
+  const ctx = document.getElementById(id).getContext('2d');
+  if(charts[id]) charts[id].destroy();
+  const base = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display: datasets.length>1 || type==='doughnut', labels:{font:{family:'ui-monospace, Menlo, Consolas, monospace',size:11}}},
+      tooltip:{callbacks:{label:(c)=>(c.dataset.label||'')+': '+inr(c.parsed.y!==undefined?c.parsed.y:c.parsed)}} },
+    scales: type==='doughnut' ? undefined : {
+      x:{ grid:{display:false}, ticks:{font:{family:'ui-monospace, Menlo, Consolas, monospace',size:10}} },
+      y:{ grid:{color:'rgba(27,42,34,0.08)'}, ticks:{font:{family:'ui-monospace, Menlo, Consolas, monospace',size:10}, callback:(v)=>{
+        if(Math.abs(v)>=100000) return '₹'+(v/100000).toFixed(1)+'L';
+        return '₹'+v;
+      }} }
+    }
+  };
+  charts[id] = new Chart(ctx, { type, data:{ labels, datasets }, options: Object.assign(base, opts||{}) });
+}
+
+function renderCategoryChart(){
+  const filtered = getFilteredTx().filter(t=>t.type==='expense');
+  const byCat = {};
+  filtered.forEach(t=>{ byCat[t.category] = (byCat[t.category]||0) + t.amount; });
+  const labels = Object.keys(byCat);
+  const data = Object.values(byCat);
+  const palette = ['#1F6F50','#C98A2C','#A2452F','#4B5A50','#7a9e8f','#d9b06b','#c47a68','#8fa89d'];
+  if(labels.length===0){
+    drawChart('categoryChart', ['No expenses'], [{data:[1], backgroundColor:['#c7cdb9']}], {plugins:{legend:{display:false}}}, 'doughnut');
+    return;
+  }
+  drawChart('categoryChart', labels, [{ data, backgroundColor: labels.map((_,i)=>palette[i%palette.length]) }], {}, 'doughnut');
+}
+
+function renderTrendChart(){
+  const months = [];
+  const now = new Date();
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push(d.toISOString().slice(0,7));
+  }
+  const incomeData = months.map(m => transactions.filter(t=>t.type==='income' && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0));
+  const expenseData = months.map(m => transactions.filter(t=>t.type==='expense' && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0));
+  const labels = months.map(m=>{
+    const [y,mo] = m.split('-');
+    return new Date(y, mo-1, 1).toLocaleString('en-IN', {month:'short'});
+  });
+  drawChart('trendChart', labels, [
+    {label:'Income', data:incomeData, backgroundColor:'#1F6F50'},
+    {label:'Expenses', data:expenseData, backgroundColor:'#A2452F'}
+  ], {}, 'bar');
+}
+
+function renderAll(){
+  populateMonthFilter();
+  populateCategoryFilter();
+  renderSummary();
+  renderList();
+  renderCategoryChart();
+  renderTrendChart();
+}
+
+// ---------- Data export / import ----------
+function downloadBlob(filename, content, mime){
+  const blob = new Blob([content], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+document.getElementById('exportJson').addEventListener('click', ()=>{
+  const payload = { transactions, categories, exportedAt: new Date().toISOString() };
+  downloadBlob('spending-tracker-backup-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(payload, null, 2), 'application/json');
+  localStorage.setItem('spendingTracker.lastExport', Date.now().toString());
+  document.getElementById('backupReminder').style.display = 'none';
+});
+document.getElementById('exportCsv').addEventListener('click', ()=>{
+  const header = 'Date,Type,Category,Description,Amount\n';
+  const rows = transactions.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(t=>
+    [t.date, t.type, t.category, '"'+(t.description||'').replace(/"/g,'""')+'"', t.amount].join(',')
+  ).join('\n');
+  downloadBlob('spending-tracker-'+new Date().toISOString().slice(0,10)+'.csv', header+rows, 'text/csv');
+});
+document.getElementById('importFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const data = JSON.parse(reader.result);
+      const incoming = Array.isArray(data.transactions) ? data.transactions : [];
+      if(!confirm(`Import ${incoming.length} transaction(s)? This will be merged with what's already here (duplicates by ID are skipped).`)) return;
+      const existingIds = new Set(transactions.map(t=>t.id));
+      incoming.forEach(t=>{ if(t.id && !existingIds.has(t.id)) transactions.push(t); });
+      if(data.categories){
+        ['income','expense'].forEach(type=>{
+          if(Array.isArray(data.categories[type])){
+            data.categories[type].forEach(c=>{ if(!categories[type].includes(c)) categories[type].push(c); });
+          }
+        });
+      }
+      saveData();
+      renderAll();
+      alert('Import complete.');
+    } catch(err){
+      alert('Could not read that file — make sure it\'s a backup exported from this tracker.');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+document.getElementById('clearAll').addEventListener('click', ()=>{
+  if(!confirm('Delete ALL transactions on this device? This cannot be undone. Consider exporting a backup first.')) return;
+  if(!confirm('Really sure? This is permanent.')) return;
+  transactions = [];
+  saveData();
+  renderAll();
+});
+
+// ---------- Google Drive backup (optional, opt-in only — nothing here loads until you click Connect) ----------
+const DRIVE_FILE_NAME = 'spending-tracker-backup.json';
+let gsiClient = null;
+let driveAccessToken = null;
+let driveTokenExpiry = 0;
+
+function loadGoogleClientId(){ return localStorage.getItem('spendingTracker.googleClientId') || ''; }
+function saveGoogleClientId(id){ localStorage.setItem('spendingTracker.googleClientId', id); }
+
+document.getElementById('googleClientIdInput').value = loadGoogleClientId();
+document.getElementById('saveClientId').addEventListener('click', ()=>{
+  const id = document.getElementById('googleClientIdInput').value.trim();
+  saveGoogleClientId(id);
+  gsiClient = null; // force re-init with new client id
+  setDriveStatus(id ? 'Client ID saved. Click Connect Google Drive.' : 'Not connected');
+});
+
+function setDriveStatus(text, connected){
+  const el = document.getElementById('driveStatus');
+  el.textContent = text;
+  el.classList.toggle('connected', !!connected);
+}
+
+function loadGsiScript(cb){
+  if(window.google && google.accounts && google.accounts.oauth2){ cb(); return; }
+  const existing = document.getElementById('gsi-script');
+  if(existing){ existing.addEventListener('load', cb, {once:true}); return; }
+  const s = document.createElement('script');
+  s.id = 'gsi-script';
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.onload = cb;
+  s.onerror = () => alert('Could not load Google Sign-In — check your internet connection.');
+  document.head.appendChild(s);
+}
+
+function initGsi(){
+  const clientId = loadGoogleClientId();
+  if(!clientId || !window.google) return false;
+  gsiClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: 'https://www.googleapis.com/auth/drive.file openid email',
+    callback: () => {} // overwritten per-call below
+  });
+  return true;
+}
+
+function requestDriveToken(onGranted){
+  const clientId = loadGoogleClientId();
+  if(!clientId){ alert('Paste your Google OAuth Client ID above first, then click Save.'); return; }
+  loadGsiScript(()=>{
+    if(!gsiClient && !initGsi()){ alert('Could not start Google Sign-In. Double check your Client ID.'); return; }
+    gsiClient.callback = (resp)=>{
+      if(resp.error){ setDriveStatus('Connection failed: '+resp.error); return; }
+      driveAccessToken = resp.access_token;
+      driveTokenExpiry = Date.now() + (resp.expires_in*1000);
+      fetchDriveUserInfo();
+      if(onGranted) onGranted();
+    };
+    gsiClient.requestAccessToken();
+  });
+}
+
+async function fetchDriveUserInfo(){
+  try{
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers:{ Authorization:'Bearer '+driveAccessToken } });
+    const info = await res.json();
+    setDriveStatus('Connected as '+(info.email||'Google account'), true);
+  } catch(e){
+    setDriveStatus('Connected', true);
+  }
+}
+
+function ensureToken(cb){
+  if(driveAccessToken && Date.now() < driveTokenExpiry-5000){ cb(); return; }
+  requestDriveToken(cb);
+}
+
+document.getElementById('connectDrive').addEventListener('click', ()=> requestDriveToken());
+
+async function findDriveFile(){
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime)`, {
+    headers:{ Authorization:'Bearer '+driveAccessToken }
+  });
+  if(!res.ok) throw new Error('Drive list failed');
+  const data = await res.json();
+  return (data.files && data.files[0]) || null;
+}
+
+document.getElementById('backupToDrive').addEventListener('click', ()=>{
+  ensureToken(async ()=>{
+    try{
+      const payload = JSON.stringify({ transactions, categories, exportedAt: new Date().toISOString() }, null, 2);
+      const existing = await findDriveFile();
+      const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
+      const boundary = 'ledgerboundary' + Date.now();
+      const body =
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+        `--${boundary}\r\nContent-Type: application/json\r\n\r\n${payload}\r\n--${boundary}--`;
+      const url = existing
+        ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`
+        : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+      const res = await fetch(url, {
+        method: existing ? 'PATCH' : 'POST',
+        headers:{ Authorization:'Bearer '+driveAccessToken, 'Content-Type':`multipart/related; boundary=${boundary}` },
+        body
+      });
+      if(res.ok){
+        localStorage.setItem('spendingTracker.lastExport', Date.now().toString());
+        document.getElementById('backupReminder').style.display = 'none';
+        alert('Backed up to Google Drive.');
+      } else {
+        alert('Backup failed (HTTP '+res.status+'). Try reconnecting.');
+      }
+    } catch(e){
+      alert('Backup failed — check your connection and try again.');
+    }
+  });
+});
+
+document.getElementById('restoreFromDrive').addEventListener('click', ()=>{
+  ensureToken(async ()=>{
+    try{
+      const file = await findDriveFile();
+      if(!file){ alert('No backup found in Drive yet — use Backup to Drive first.'); return; }
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+        headers:{ Authorization:'Bearer '+driveAccessToken }
+      });
+      if(!res.ok){ alert('Restore failed (HTTP '+res.status+').'); return; }
+      const data = await res.json();
+      const incoming = Array.isArray(data.transactions) ? data.transactions : [];
+      if(!confirm(`Restore ${incoming.length} transaction(s) from Drive? This merges with what's already on this device (duplicates by ID are skipped).`)) return;
+      const existingIds = new Set(transactions.map(t=>t.id));
+      incoming.forEach(t=>{ if(t.id && !existingIds.has(t.id)) transactions.push(t); });
+      if(data.categories){
+        ['income','expense'].forEach(type=>{
+          if(Array.isArray(data.categories[type])) data.categories[type].forEach(c=>{ if(!categories[type].includes(c)) categories[type].push(c); });
+        });
+      }
+      saveData();
+      renderAll();
+      alert('Restored from Google Drive.');
+    } catch(e){
+      alert('Restore failed — check your connection and try again.');
+    }
+  });
+});
+
+document.getElementById('disconnectDrive').addEventListener('click', ()=>{
+  if(driveAccessToken && window.google && google.accounts){
+    google.accounts.oauth2.revoke(driveAccessToken, ()=>{});
+  }
+  driveAccessToken = null;
+  driveTokenExpiry = 0;
+  setDriveStatus('Not connected');
+});
+
+if(loadGoogleClientId()) setDriveStatus('Client ID saved. Click Connect Google Drive.');
+
+// ---------- Init ----------
+loadData();
+resetForm();
+renderAll();
+checkBackupReminder();
+
+function checkBackupReminder(){
+  if(transactions.length===0) return;
+  const dismissedAt = +(sessionStorage.getItem('spendingTracker.reminderDismissed')||0);
+  if(dismissedAt) return; // don't nag again this session
+  const lastExport = +(localStorage.getItem('spendingTracker.lastExport')||0);
+  const daysSince = lastExport ? (Date.now()-lastExport)/(1000*60*60*24) : Infinity;
+  if(daysSince > 14){
+    document.getElementById('backupReminder').style.display = '';
+  }
+}
+document.getElementById('reminderExportBtn').addEventListener('click', ()=> document.getElementById('exportJson').click());
+document.getElementById('reminderDismiss').addEventListener('click', ()=>{
+  document.getElementById('backupReminder').style.display = 'none';
+  sessionStorage.setItem('spendingTracker.reminderDismissed', Date.now().toString());
+});
+
+// ---------- Offline support (service worker) ----------
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{ /* fails silently if unsupported */ });
+  });
+}
+</script>
+
+</body>
+</html>
