@@ -683,7 +683,15 @@ document.getElementById('saveClientId').addEventListener('click', ()=>{
   const id = document.getElementById('googleClientIdInput').value.trim();
   saveGoogleClientId(id);
   gsiClient = null; // force re-init with new client id
-  setDriveStatus(id ? 'Client ID saved. Click Connect Google Drive.' : 'Not connected');
+  if(id){
+    setDriveStatus('Client ID saved — preparing Google Sign-In…');
+    loadGsiScript(()=>{
+      initGsi();
+      setDriveStatus('Ready. Click Connect Google Drive.');
+    });
+  } else {
+    setDriveStatus('Not connected');
+  }
 });
 
 function setDriveStatus(text, connected){
@@ -700,7 +708,7 @@ function loadGsiScript(cb){
   s.id = 'gsi-script';
   s.src = 'https://accounts.google.com/gsi/client';
   s.onload = cb;
-  s.onerror = () => alert('Could not load Google Sign-In — check your internet connection.');
+  s.onerror = () => { setDriveStatus('Could not load Google Sign-In — check your connection.'); };
   document.head.appendChild(s);
 }
 
@@ -718,8 +726,10 @@ function initGsi(){
 function requestDriveToken(onGranted){
   const clientId = loadGoogleClientId();
   if(!clientId){ alert('Paste your Google OAuth Client ID above first, then click Save.'); return; }
-  loadGsiScript(()=>{
-    if(!gsiClient && !initGsi()){ alert('Could not start Google Sign-In. Double check your Client ID.'); return; }
+  // Fast path: script + client already prepared (the common case) — call
+  // requestAccessToken() synchronously within this click so the browser
+  // still treats the popup as user-initiated and doesn't silently block it.
+  if(gsiClient){
     gsiClient.callback = (resp)=>{
       if(resp.error){ setDriveStatus('Connection failed: '+resp.error); return; }
       driveAccessToken = resp.access_token;
@@ -728,6 +738,15 @@ function requestDriveToken(onGranted){
       if(onGranted) onGranted();
     };
     gsiClient.requestAccessToken();
+    return;
+  }
+  // Slow path: first time, script/client not ready yet. Prepare them now,
+  // but the popup may get blocked this one time since it's no longer a
+  // same-tick user gesture — tell the person to click Connect once more.
+  setDriveStatus('Preparing Google Sign-In — click Connect Google Drive once more…');
+  loadGsiScript(()=>{
+    if(!initGsi()){ setDriveStatus('Could not start Google Sign-In. Double check your Client ID.'); return; }
+    setDriveStatus('Ready — click Connect Google Drive again.');
   });
 }
 
@@ -747,6 +766,13 @@ function ensureToken(cb){
 }
 
 document.getElementById('connectDrive').addEventListener('click', ()=> requestDriveToken());
+
+// If a Client ID was already saved in a previous session, preload the
+// sign-in script right away so the very first Connect click this session
+// still works on the first try.
+if(loadGoogleClientId()){
+  loadGsiScript(()=>{ initGsi(); setDriveStatus('Ready. Click Connect Google Drive.'); });
+}
 
 async function findDriveFile(){
   const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
@@ -826,7 +852,7 @@ document.getElementById('disconnectDrive').addEventListener('click', ()=>{
   setDriveStatus('Not connected');
 });
 
-if(loadGoogleClientId()) setDriveStatus('Client ID saved. Click Connect Google Drive.');
+// (Client ID preload handled above, right after the Connect button wiring.)
 
 // ---------- Init ----------
 loadData();
