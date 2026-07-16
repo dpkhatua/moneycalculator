@@ -1,4 +1,4 @@
-const CACHE_NAME = 'compound-ledger-v4';
+const CACHE_NAME = 'compound-ledger-v5';
 const CORE_ASSETS = [
   './tracker.html',
   './tracker.js',
@@ -12,7 +12,7 @@ const CORE_ASSETS = [
 // Files that change whenever the app is updated — always try the network
 // first so updates show up immediately, and only fall back to the cached
 // copy if there's genuinely no connection.
-const NETWORK_FIRST = ['tracker.html', 'tracker.js', 'index.html'];
+const NETWORK_FIRST = ['tracker.html', 'tracker.js', 'index.html', 'prices.json'];
 // Rarely-changing static assets — fine to serve straight from cache for speed,
 // refreshing the cache in the background each time.
 const CACHE_FIRST = ['manifest.json', 'icon-192.png', 'icon-512.png', 'chart.min.js'];
@@ -48,8 +48,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
           return response;
         })
         .catch(() => caches.match(event.request)) // offline fallback only
