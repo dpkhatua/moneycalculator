@@ -1,4 +1,3 @@
-
 const STORAGE_KEY = 'spendingTracker.transactions.v1';
 const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
@@ -11,13 +10,13 @@ const DEFAULT_CATEGORIES = {
 
 const ASSET_CLASS_LABELS = {
   savings:'Savings', fd:'FD', rd:'RD', epf:'EPF', ppf:'PPF', equity:'Equity', mf:'Mutual Fund',
-  liquidmf:'Liquid/Short MF', gold:'Gold/Silver', crypto:'Crypto', usstock:'US Stocks'
+  liquidmf:'Liquid/Short MF', gold:'Gold/Silver', crypto:'Crypto', usstock:'US Stocks',
+  realestate:'Real Estate', vehicle:'Vehicle', other:'Other Asset'
 };
 
 function emptyNetWorthBucket(){
   return {
     holdings: [],
-    flatAssets: { realEstate:0, vehicles:0, otherAsset:0 },
     liabilities: { homeLoan:0, carLoan:0, ccDebt:0, personalLoan:0, otherLiability:0 }
   };
 }
@@ -95,6 +94,20 @@ function loadData(){
   // into a single lot so no data is lost.
   ['INR','USD'].forEach(cur=>{
     netWorthData[cur].holdings = netWorthData[cur].holdings.map(migrateHolding);
+  });
+  // Migration: Real Estate/Vehicles/Other used to be flat number fields —
+  // convert any non-zero values into regular holdings so nothing is lost,
+  // then drop the old fields.
+  ['INR','USD'].forEach(cur=>{
+    const bucket = netWorthData[cur];
+    const flat = bucket.flatAssets;
+    if(flat){
+      const today = todayLocalISO();
+      if(flat.realEstate>0) bucket.holdings.push({ id: nwUid(), assetClass:'realestate', name:'Real estate', currentPrice: flat.realEstate, lots:[{id:nwUid(), date:today, quantity:1, price:flat.realEstate}], sells:[] });
+      if(flat.vehicles>0) bucket.holdings.push({ id: nwUid(), assetClass:'vehicle', name:'Vehicles', currentPrice: flat.vehicles, lots:[{id:nwUid(), date:today, quantity:1, price:flat.vehicles}], sells:[] });
+      if(flat.otherAsset>0) bucket.holdings.push({ id: nwUid(), assetClass:'other', name:'Other assets', currentPrice: flat.otherAsset, lots:[{id:nwUid(), date:today, quantity:1, price:flat.otherAsset}], sells:[] });
+      delete bucket.flatAssets;
+    }
   });
   // Migration: transactions logged before multi-currency support have no
   // currency field — treat them as INR, since that was the only option then.
@@ -415,6 +428,7 @@ document.getElementById('addHolding').addEventListener('click', ()=>{
   const currentPriceRaw = document.getElementById('holdingCurrentPrice').value;
   const currentPrice = currentPriceRaw==='' ? price : +currentPriceRaw;
   const ticker = document.getElementById('holdingTicker').value.trim();
+  const note = document.getElementById('holdingNote').value.trim();
 
   if(!name){ alert('Give this holding a name.'); return; }
   if(!price || price<=0){ alert('Enter a buy price greater than zero.'); return; }
@@ -425,6 +439,7 @@ document.getElementById('addHolding').addEventListener('click', ()=>{
     assetClass,
     name,
     ticker: ticker || null,
+    note: note || null,
     currentPrice,
     lots: [{ id: nwUid(), date, quantity, price }],
     sells: []
@@ -435,6 +450,7 @@ document.getElementById('addHolding').addEventListener('click', ()=>{
   document.getElementById('holdingPrice').value = '';
   document.getElementById('holdingCurrentPrice').value = '';
   document.getElementById('holdingTicker').value = '';
+  document.getElementById('holdingNote').value = '';
   document.getElementById('holdingDate').value = todayLocalISO();
   renderNetWorth();
 });
@@ -543,6 +559,16 @@ function setHoldingTicker(id){
   renderNetWorth();
 }
 
+function setHoldingNote(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  const raw = prompt(`A few words about "${h.name}":`, h.note||'');
+  if(raw===null) return;
+  h.note = raw.trim() || null;
+  saveData();
+  renderNetWorth();
+}
+
 // ---- Auto price fetch: a scheduled GitHub Action fetches prices (US stocks,
 // Indian NSE/BSE stocks, and crypto, all via one source) and publishes them
 // to prices.json in this repo. The browser just reads that file — nothing
@@ -615,7 +641,16 @@ function renderHoldingsList(){
   }
   wrap.innerHTML = '';
   const today = todayLocalISO();
-  holdings.slice().sort((a,b)=>a.assetClass.localeCompare(b.assetClass)).forEach(h=>{
+  // Real Estate / Vehicle / Other aren't market-traded, so they sit at the
+  // bottom of the list, after everything else (sorted alphabetically among themselves).
+  const OTHER_ASSET_CLASSES = ['realestate','vehicle','other'];
+  const sorted = holdings.slice().sort((a,b)=>{
+    const aOther = OTHER_ASSET_CLASSES.includes(a.assetClass);
+    const bOther = OTHER_ASSET_CLASSES.includes(b.assetClass);
+    if(aOther !== bOther) return aOther ? 1 : -1;
+    return a.assetClass.localeCompare(b.assetClass);
+  });
+  sorted.forEach(h=>{
     const qty = holdingQuantity(h);
     const invested = holdingInvested(h);
     const avgPrice = holdingAvgPrice(h);
@@ -635,6 +670,7 @@ function renderHoldingsList(){
         <span class="h-name">${escapeHtml(h.name)}${qty<=0?' (fully sold)':''}</span>
         <span class="h-meta">${h.ticker?escapeHtml(h.ticker)+' · ':''}${daysHeld!==null&&qty>0?'Held '+daysHeld+' day'+(daysHeld===1?'':'s'):''}</span>
       </div>
+      ${h.note?`<div class="h-note">${escapeHtml(h.note)}</div>`:''}
       <div class="hc-stats">
         <div class="h-figure"><span class="lbl">Units</span>${qty}</div>
         <div class="h-figure"><span class="lbl">Avg buy</span>${qty>0?fmtAmount(avgPrice):'—'}</div>
@@ -647,9 +683,10 @@ function renderHoldingsList(){
       <div class="h-actions">
         <button class="buy" data-action="buy">+ Buy</button>
         <button class="sell" data-action="sell" ${qty<=0?'disabled':''}>− Sell</button>
-        <button data-action="mark">✎ Update price</button>
+        <button data-action="mark">✎ Update value</button>
         <button data-action="ticker">🔗 ${h.ticker?'Edit':'Set'} ticker</button>
         ${h.ticker?'<button data-action="refresh">🔄 Refresh</button>':''}
+        <button data-action="note">📝 ${h.note?'Edit':'Add'} note</button>
         <button data-action="log">☰ Log</button>
         <button data-action="del">× Delete</button>
       </div>
@@ -665,11 +702,13 @@ function renderHoldingsList(){
     card.querySelector('[data-action=ticker]').addEventListener('click', ()=>setHoldingTicker(h.id));
     const refreshBtn = card.querySelector('[data-action=refresh]');
     if(refreshBtn) refreshBtn.addEventListener('click', ()=>refreshHoldingPrice(h.id));
+    card.querySelector('[data-action=note]').addEventListener('click', ()=>setHoldingNote(h.id));
     card.querySelector('[data-action=log]').addEventListener('click', ()=>toggleHoldingLog(h.id));
     card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteHolding(h.id));
     wrap.appendChild(card);
   });
 }
+
 
 function renderNWTotals(){
   const holdings = getNW().holdings;
@@ -761,10 +800,6 @@ function bindFlatNWField(id, group, key){
     renderNWSummary();
   });
 }
-['nwRealEstate','nwVehicles','nwOtherAsset'].forEach(id=>{
-  const key = id==='nwRealEstate'?'realEstate':id==='nwVehicles'?'vehicles':'otherAsset';
-  bindFlatNWField(id, 'flatAssets', key);
-});
 [['nwHomeLoan','homeLoan'],['nwCarLoan','carLoan'],['nwCcDebt','ccDebt'],['nwPersonalLoan','personalLoan'],['nwOtherLiability','otherLiability']].forEach(([id,key])=>{
   bindFlatNWField(id, 'liabilities', key);
 });
@@ -772,21 +807,16 @@ function bindFlatNWField(id, group, key){
 function renderNWSummary(investmentValue){
   const nw = getNW();
   if(investmentValue===undefined) investmentValue = nw.holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
-  const otherAssets = nw.flatAssets.realEstate + nw.flatAssets.vehicles + nw.flatAssets.otherAsset;
   const liabilities = nw.liabilities.homeLoan + nw.liabilities.carLoan + nw.liabilities.ccDebt + nw.liabilities.personalLoan + nw.liabilities.otherLiability;
-  const grandTotal = investmentValue + otherAssets - liabilities;
+  const grandTotal = investmentValue - liabilities;
 
   document.getElementById('nwInvestValue').textContent = fmtAmount(investmentValue);
-  document.getElementById('nwOtherAssetsTotal').textContent = fmtAmount(otherAssets);
   document.getElementById('nwLiabTotal').textContent = fmtAmount(liabilities);
   const grandEl = document.getElementById('nwGrandTotal');
   grandEl.textContent = fmtAmount(grandTotal);
   grandEl.classList.toggle('brick', grandTotal<0);
 
-  // reflect saved flat values into the input fields (e.g. after switching currency or restoring from Drive)
-  document.getElementById('nwRealEstate').value = nw.flatAssets.realEstate;
-  document.getElementById('nwVehicles').value = nw.flatAssets.vehicles;
-  document.getElementById('nwOtherAsset').value = nw.flatAssets.otherAsset;
+  // reflect saved liability values into the input fields (e.g. after switching currency or restoring from Drive)
   document.getElementById('nwHomeLoan').value = nw.liabilities.homeLoan;
   document.getElementById('nwCarLoan').value = nw.liabilities.carLoan;
   document.getElementById('nwCcDebt').value = nw.liabilities.ccDebt;
@@ -846,7 +876,20 @@ function mergeNetWorthFromBackup(incomingNW){
         if(h.id && !existingIds.has(h.id)){ localBucket.holdings.push(h); addedHoldings++; }
       });
     }
-    if(incomingBucket.flatAssets) Object.assign(localBucket.flatAssets, incomingBucket.flatAssets);
+    // Old-format backups may still have flatAssets (Real Estate/Vehicles/Other
+    // as flat numbers) — convert any into holdings so nothing is lost.
+    if(incomingBucket.flatAssets){
+      const flat = incomingBucket.flatAssets;
+      const today = todayLocalISO();
+      const map = { realEstate:['realestate','Real estate'], vehicles:['vehicle','Vehicles'], otherAsset:['other','Other assets'] };
+      Object.keys(map).forEach(key=>{
+        if(flat[key]>0){
+          const [assetClass, name] = map[key];
+          localBucket.holdings.push({ id: nwUid(), assetClass, name, currentPrice: flat[key], lots:[{id:nwUid(), date:today, quantity:1, price:flat[key]}], sells:[] });
+          addedHoldings++;
+        }
+      });
+    }
     if(incomingBucket.liabilities) Object.assign(localBucket.liabilities, incomingBucket.liabilities);
   });
   return addedHoldings;
