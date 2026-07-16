@@ -39,6 +39,25 @@ function fmtAmount(n, currency){
   return (currency||currentCurrency)==='USD' ? usd(n) : inr(n);
 }
 
+// ---- Timezone-safe date helpers ----
+// Date-only strings like "2026-07-15" get parsed by `new Date(...)` as UTC
+// midnight. Anyone west of UTC (all of the US) then sees it roll back to the
+// previous day once displayed in local time. These helpers work entirely in
+// local time so "today" and displayed dates always match the calendar date
+// you actually meant, regardless of timezone.
+function todayLocalISO(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function thisMonthLocal(){ return todayLocalISO().slice(0,7); }
+function parseLocalDate(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y, m-1, d); // local time, no UTC shift
+}
+
 function loadData(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -117,7 +136,7 @@ function resetForm(){
   editingId = null;
   document.getElementById('editNote').textContent = '';
   document.getElementById('txSubmit').textContent = 'Add transaction';
-  document.getElementById('txDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('txDate').value = todayLocalISO();
   document.getElementById('txDesc').value = '';
   document.getElementById('txAmount').value = '';
   setType('expense');
@@ -173,7 +192,7 @@ function populateMonthFilter(){
   const prevValue = sel.value;
   const months = [...new Set(txInCurrentCurrency().map(t=>monthKey(t.date)))].sort().reverse();
   sel.innerHTML = '<option value="__all__">All time</option>';
-  const thisMonth = new Date().toISOString().slice(0,7);
+  const thisMonth = thisMonthLocal();
   if(!months.includes(thisMonth)) months.unshift(thisMonth);
   months.forEach(m=>{
     const opt = document.createElement('option');
@@ -214,7 +233,7 @@ function getFilteredTx(){
 
 // ---------- Rendering ----------
 function renderSummary(){
-  const thisMonth = new Date().toISOString().slice(0,7);
+  const thisMonth = thisMonthLocal();
   const currencyTx = txInCurrentCurrency();
   const monthTx = currencyTx.filter(t=>monthKey(t.date)===thisMonth);
   const monthIncome = monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
@@ -247,7 +266,7 @@ function renderList(){
   filtered.forEach(t=>{
     const row = document.createElement('div');
     row.className = 'tx-row';
-    const d = new Date(t.date);
+    const d = parseLocalDate(t.date);
     const dateLabel = d.toLocaleDateString('en-IN', {day:'2-digit', month:'short'});
     row.innerHTML = `
       <div class="tx-date">${escapeHtml(dateLabel)}</div>
@@ -409,6 +428,25 @@ let driveTokenExpiry = 0;
 function loadGoogleClientId(){ return localStorage.getItem('spendingTracker.googleClientId') || ''; }
 function saveGoogleClientId(id){ localStorage.setItem('spendingTracker.googleClientId', id); }
 
+// If this page was opened via a "setup link" (tracker.html?clientId=...),
+// auto-fill and save it — this is how a second device gets set up with one
+// tap instead of copy-pasting the Client ID by hand. The Client ID itself
+// isn't a secret (unlike a password or the OAuth Client Secret), so putting
+// it in a URL you share with yourself (e.g. via your own Notes app or a
+// message to yourself) is safe.
+(function autoFillClientIdFromUrl(){
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get('clientId');
+  if(fromUrl && fromUrl.trim()){
+    saveGoogleClientId(fromUrl.trim());
+    // Remove it from the visible URL/history once saved, so it doesn't
+    // linger in browser history or get accidentally shared again.
+    params.delete('clientId');
+    const cleanUrl = window.location.pathname + (params.toString() ? '?'+params.toString() : '');
+    window.history.replaceState({}, '', cleanUrl);
+  }
+})();
+
 document.getElementById('googleClientIdInput').value = loadGoogleClientId();
 document.getElementById('saveClientId').addEventListener('click', ()=>{
   const id = document.getElementById('googleClientIdInput').value.trim();
@@ -422,6 +460,17 @@ document.getElementById('saveClientId').addEventListener('click', ()=>{
     });
   } else {
     setDriveStatus('Not connected');
+  }
+});
+document.getElementById('copySetupLink').addEventListener('click', async ()=>{
+  const id = loadGoogleClientId();
+  if(!id){ alert('Save a Client ID first, then copy the setup link.'); return; }
+  const url = window.location.origin + window.location.pathname + '?clientId=' + encodeURIComponent(id);
+  try{
+    await navigator.clipboard.writeText(url);
+    alert('Setup link copied! Send it to yourself (e.g. your own Notes app or a message to yourself) and open it on your other device — it\u2019ll auto-fill the Client ID there.');
+  } catch(e){
+    prompt('Copy this link and open it on your other device:', url);
   }
 });
 
