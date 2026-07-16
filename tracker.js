@@ -3,8 +3,8 @@ const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
 
 const DEFAULT_CATEGORIES = {
-  expense: ['Food','Transport','Housing','Utilities','Shopping','Entertainment','Health','Education','Other'],
-  income: ['Salary','Business','Investment','Gift','Other']
+  expense: ['Food','Grocery','Transport','Housing','Utilities','Shopping','Entertainment','Health','Education','Other'],
+  income: ['Salary','Dividend','Interest','Business','Investment','Gift','Other']
 };
 
 let transactions = [];
