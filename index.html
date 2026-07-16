@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Compound Ledger — 21 Money Calculators for Indian Savers</title>
+<meta name="description" content="FD, RD, SIP, Lumpsum, SWP, CAGR, EMI, PPF, EPF, SSY, income tax, GST, XIRR, inflation and more — 21 money calculators in one place.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#EAEFE6;
+    --paper-raised:#F5F7F0;
+    --ink:#1B2A22;
+    --ink-soft:#4B5A50;
+    --rule:#c7cdb9;
+    --green:#1F6F50;
+    --green-deep:#153F30;
+    --mustard:#C98A2C;
+    --brick:#A2452F;
+    --shadow: 0 1px 0 rgba(27,42,34,0.06);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--paper),var(--paper)),
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(27,42,34,0.05) 28px),
+      repeating-linear-gradient(90deg, transparent, transparent 27px, rgba(27,42,34,0.035) 28px);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;}
+  }
+  a{color:inherit;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px;}
+
+  /* ===== Header / Hero ===== */
+  header.hero{
+    padding:64px 0 40px;
+    border-bottom:1px solid var(--rule);
+  }
+  .masthead{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    margin-bottom:48px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:13px;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .masthead .mark{
+    display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:600;
+  }
+  .mark .dot{width:9px;height:9px;border-radius:50%;background:var(--green);display:inline-block;}
+  .hero h1{
+    font-family:'Fraunces',serif;
+    font-optical-sizing:auto;
+    font-weight:600;
+    font-size:clamp(2.4rem,5.2vw,4.4rem);
+    line-height:1.02;
+    margin:0 0 20px;
+    letter-spacing:-0.01em;
+  }
+  .hero h1 em{
+    font-style:italic;
+    color:var(--green);
+  }
+  .hero p.sub{
+    max-width:560px;
+    font-size:17px;
+    line-height:1.55;
+    color:var(--ink-soft);
+    margin:0 0 40px;
+  }
+
+  /* Hero ticker: interactive live demo */
+  .ticker{
+    display:grid;
+    grid-template-columns:1.1fr 1fr;
+    gap:0;
+    border:1px solid var(--rule);
+    background:var(--paper-raised);
+    box-shadow:var(--shadow);
+  }
+  @media (max-width:720px){ .ticker{grid-template-columns:1fr;} }
+  .ticker .controls{
+    padding:28px 28px 32px;
+    border-right:1px solid var(--rule);
+  }
+  @media (max-width:720px){ .ticker .controls{border-right:none;border-bottom:1px solid var(--rule);} }
+  .ticker .controls .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mustard);margin-bottom:14px;font-weight:600;
+  }
+  .slider-row{margin-bottom:18px;}
+  .slider-row label{
+    display:flex;justify-content:space-between;font-size:13px;color:var(--ink-soft);margin-bottom:6px;
+  }
+  .slider-row label b{font-family:'IBM Plex Mono',monospace;color:var(--ink);font-weight:600;}
+  input[type=range]{
+    width:100%;-webkit-appearance:none;appearance:none;height:2px;background:var(--rule);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:15px;height:15px;border-radius:50%;background:var(--green);cursor:pointer;border:2px solid var(--paper-raised);box-shadow:0 0 0 1px var(--green);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:15px;height:15px;border-radius:50%;background:var(--green);cursor:pointer;border:2px solid var(--paper-raised);box-shadow:0 0 0 1px var(--green);
+  }
+  .ticker .result{
+    padding:28px;
+    display:flex;flex-direction:column;justify-content:center;align-items:flex-start;
+    position:relative;
+    overflow:hidden;
+  }
+  .ticker .result .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;
+  }
+  .ticker .result .big{
+    font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:clamp(1.8rem,4vw,2.6rem);color:var(--green-deep);line-height:1;
+  }
+  .ticker .result .note{font-size:13px;color:var(--ink-soft);margin-top:10px;line-height:1.5;}
+  .stamp{
+    position:absolute;right:18px;top:18px;
+    width:74px;height:74px;border-radius:50%;
+    border:2px solid var(--brick);color:var(--brick);
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;
+    transform:rotate(9deg);opacity:0.55;line-height:1.15;
+    pointer-events:none;
+  }
+
+  /* ===== Tabs / Nav ===== */
+  nav.tabs{
+    position:sticky;top:0;z-index:10;
+    background:var(--paper);
+    border-bottom:1px solid var(--rule);
+    padding-top:18px;
+  }
+  nav.tabs .wrap{display:flex;gap:2px;overflow-x:auto;}
+  nav.tabs button{
+    flex:0 0 auto;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;letter-spacing:0.03em;text-transform:uppercase;font-weight:600;
+    background:none;border:none;border-bottom:2px solid transparent;
+    padding:14px 18px;cursor:pointer;color:var(--ink-soft);
+    transition:color .15s ease, border-color .15s ease;
+    white-space:nowrap;
+  }
+  nav.tabs button:hover{color:var(--ink);}
+  nav.tabs button.active{color:var(--green-deep);border-bottom-color:var(--green);}
+  nav.tabs button:focus-visible, button:focus-visible, input:focus-visible{
+    outline:2px solid var(--green); outline-offset:2px;
+  }
+
+  /* ===== Calculator panels ===== */
+  main{padding:44px 0 80px;}
+  .panel{display:none;animation:fadein .25s ease;}
+  .panel.active{display:block;}
+  @keyframes fadein{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+
+  .panel-head{display:flex;align-items:baseline;gap:16px;margin-bottom:6px;flex-wrap:wrap;}
+  .panel-head .num{font-family:'IBM Plex Mono',monospace;color:var(--mustard);font-weight:600;font-size:13px;}
+  .panel-head h2{font-family:'Fraunces',serif;font-weight:600;font-size:1.9rem;margin:0;}
+  .panel-desc{color:var(--ink-soft);font-size:15px;max-width:620px;margin:8px 0 32px;line-height:1.55;}
+
+  .calc-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:0;
+    border:1px solid var(--rule);background:var(--paper-raised);
+  }
+  @media (max-width:760px){.calc-grid{grid-template-columns:1fr;}}
+  .calc-inputs{padding:32px;border-right:1px solid var(--rule);}
+  @media (max-width:760px){.calc-inputs{border-right:none;border-bottom:1px solid var(--rule);}}
+  .field{margin-bottom:22px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-size:13.5px;color:var(--ink-soft);margin-bottom:8px;font-weight:500;
+  }
+  .field label .val{font-family:'IBM Plex Mono',monospace;color:var(--ink);font-weight:600;font-size:13px;}
+  .field select, .field .numwrap{
+    width:100%;
+  }
+  .field .numwrap{
+    display:flex;align-items:center;border:1px solid var(--rule);background:#fff;
+  }
+  .field .numwrap span{
+    padding:10px 10px;font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:14px;border-right:1px solid var(--rule);
+  }
+  .field .numwrap input{
+    border:none;padding:10px 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;width:100%;background:transparent;color:var(--ink);
+  }
+  .field select{
+    padding:10px 12px;border:1px solid var(--rule);background:#fff;font-family:'Inter',sans-serif;font-size:14px;color:var(--ink);
+  }
+  .field input[type=range]{margin-top:6px;}
+  .inline-num{display:flex;align-items:center;gap:12px;}
+  .inline-num input[type=number]{
+    width:104px;flex:0 0 auto;
+    border:1px solid var(--rule);background:#fff;
+    font-family:'IBM Plex Mono',monospace;font-size:14px;padding:9px 10px;color:var(--ink);
+  }
+  .inline-num input[type=range]{flex:1;margin-top:0;}
+
+  .calc-results{padding:32px;position:relative;}
+  .result-figure{margin-bottom:22px;}
+  .result-figure .label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:6px;}
+  .result-figure .value{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:1.7rem;color:var(--green-deep);}
+  .result-figure .value.brick{color:var(--brick);}
+  .result-row{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:24px;}
+  canvas{max-width:100%;}
+  .chart-wrap{height:200px;margin-top:8px;}
+
+  .footnote{
+    margin-top:16px;font-size:12.5px;color:var(--ink-soft);line-height:1.5;border-top:1px dashed var(--rule);padding-top:14px;
+  }
+
+  /* plain number field, no slider (net worth, budget, etc) */
+  .field.plain .numwrap{width:100%;}
+  .field-2col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media (max-width:420px){.field-2col{grid-template-columns:1fr;}}
+  .subhead{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;
+    color:var(--mustard);font-weight:600;margin:22px 0 12px;
+  }
+  .subhead:first-child{margin-top:0;}
+
+  select.plain-select{
+    width:100%;padding:10px 12px;border:1px solid var(--rule);background:#fff;font-family:'Inter',sans-serif;font-size:14px;color:var(--ink);
+  }
+  .radio-row{display:flex;gap:18px;flex-wrap:wrap;}
+  .radio-row label{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink);font-weight:400;}
+  .radio-row input{accent-color:var(--green);}
+
+  /* dynamic row lists (XIRR cash flows) */
+  .row-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}
+  .row-item{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;}
+  .row-item input{border:1px solid var(--rule);background:#fff;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:8px 9px;color:var(--ink);width:100%;}
+  .row-item .rm{
+    background:none;border:1px solid var(--rule);color:var(--brick);width:34px;height:34px;cursor:pointer;font-size:15px;line-height:1;
+  }
+  .row-item .rm:hover{background:rgba(162,69,47,0.08);}
+  .add-row{
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;letter-spacing:0.02em;
+    background:none;border:1px dashed var(--green);color:var(--green-deep);padding:9px 14px;cursor:pointer;
+  }
+  .add-row:hover{background:rgba(31,111,80,0.06);}
+
+  .result-figure.small .value{font-size:1.35rem;}
+  .badge-tag{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.04em;text-transform:uppercase;
+    color:var(--ink-soft);border:1px solid var(--rule);padding:3px 8px;margin-left:8px;vertical-align:middle;
+  }
+
+  footer{
+    border-top:1px solid var(--rule);padding:28px 0 60px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);
+  }
+  footer a{text-decoration:underline;text-underline-offset:2px;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="masthead">
+      <div class="mark"><span class="dot"></span> Money Calculator for Indians made with Love ❤️</div>
+      <a href="tracker.html" style="color:var(--ink-soft);text-decoration:none;border-bottom:1px dashed var(--rule);">Spending Tracker →</a>
+    </div>
+    <h1>Money grows in <em>quiet</em> arithmetic.</h1>
+    <p class="sub">Twenty-one calculators for the way money actually moves — deposits, SIPs, loans, taxes, and government savings schemes. Drag a slider below to see compounding do its work.</p>
+
+    <div class="ticker">
+      <div class="controls">
+        <div class="eyebrow">Try it — monthly SIP</div>
+        <div class="slider-row">
+          <label>Monthly investment <b id="tkAmtLabel">₹10,000</b></label>
+          <div class="inline-num">
+            <input type="number" id="tkAmt" min="0" step="500" value="10000">
+            <input type="range" id="tkAmtRange" min="500" max="100000" step="500" value="10000">
+          </div>
+        </div>
+        <div class="slider-row">
+          <label>Years invested <b id="tkYrsLabel">10 yr</b></label>
+          <div class="inline-num">
+            <input type="number" id="tkYrs" min="0" step="1" value="10">
+            <input type="range" id="tkYrsRange" min="1" max="35" step="1" value="10">
+          </div>
+        </div>
+        <div class="slider-row">
+          <label>Expected annual return <b id="tkRetLabel">12%</b></label>
+          <div class="inline-num">
+            <input type="number" id="tkRet" step="0.5" value="12">
+            <input type="range" id="tkRetRange" min="4" max="20" step="0.5" value="12">
+          </div>
+        </div>
+      </div>
+      <div class="result">
+        <div class="stamp">SIP<br>growth</div>
+        <div class="eyebrow">Future value</div>
+        <div class="big" id="tkResult">₹23,00,000</div>
+        <div class="note" id="tkNote">You'll put in ₹12,00,000 of your own money over 10 years.</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="wrap">
+    <button data-panel="fd" class="active">01 · Fixed Deposit</button>
+    <button data-panel="rd">02 · Recurring Deposit</button>
+    <button data-panel="sip">03 · SIP</button>
+    <button data-panel="lumpsum">04 · Lumpsum</button>
+    <button data-panel="swp">05 · SWP</button>
+    <button data-panel="cagr">06 · CAGR</button>
+    <button data-panel="compound">07 · Compound Interest</button>
+    <button data-panel="loan">08 · Loan Payoff</button>
+    <button data-panel="cc">09 · Credit Card Payoff</button>
+    <button data-panel="budget">10 · Budget (50/30/20)</button>
+    <button data-panel="ssy">11 · Sukanya Samriddhi</button>
+    <button data-panel="tax">12 · Income Tax</button>
+    <button data-panel="ppf">13 · PPF</button>
+    <button data-panel="epf">14 · EPF</button>
+    <button data-panel="emi">15 · EMI</button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <!-- FD -->
+  <section class="panel active" id="panel-fd">
+    <div class="panel-head"><span class="num">01</span><h2>Fixed Deposit</h2></div>
+    <p class="panel-desc">Lock a lump sum at a fixed rate for a fixed term. Choose how often the bank compounds interest — quarterly is standard for most Indian banks.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Principal amount <span class="val" id="fdPrincipalLabel">₹1,00,000</span></label>
+          <div class="numwrap"><span>₹</span><input type="number" id="fdPrincipal" value="100000" min="1000" step="1000"></div>
+          <input type="range" id="fdPrincipalRange" min="1000" max="5000000" step="1000" value="100000">
+        </div>
+        <div class="field">
+          <label>Annual interest rate <span class="val" id="fdRateLabel">7.0%</span></label>
+          <div class="inline-num">
+            <input type="number" id="fdRate" min="0" step="0.1" value="7">
+            <input type="range" id="fdRateRange" min="1" max="12" step="0.1" value="7">
+          </div>
+        </div>
+        <div class="field">
+          <label>Tenure (years) <span class="val" id="fdYearsLabel">5 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="fdYears" min="0" step="1" value="5">
+            <input type="range" id="fdYearsRange" min="1" max="20" step="1" value="5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Compounding frequency</label>
+          <select id="fdFreq">
+            <option value="4" selected>Quarterly</option>
+            <option value="12">Monthly</option>
+            <option value="2">Half-yearly</option>
+            <option value="1">Annually</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="fdInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="fdInfl" min="0" step="0.5" value="6">
+            <input type="range" id="fdInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Maturity value</div><div class="value" id="fdMaturity">₹0</div></div>
+          <div class="result-figure"><div class="label">Interest earned</div><div class="value" id="fdInterest">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="fdReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="fdChart"></canvas></div>
+        <div class="footnote">Assumes interest is reinvested each compounding period, as standard cumulative FDs do. TDS and premature-withdrawal penalties aren't factored in.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RD -->
+  <section class="panel" id="panel-rd">
+    <div class="panel-head"><span class="num">02</span><h2>Recurring Deposit</h2></div>
+    <p class="panel-desc">Deposit a fixed amount every month and let the bank compound it quarterly, same as an FD — just built up in instalments instead of one lump sum.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Monthly deposit <span class="val" id="rdAmtLabel">₹5,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="rdAmt" min="0" step="100" value="5000">
+            <input type="range" id="rdAmtRange" min="100" max="200000" step="100" value="5000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual interest rate <span class="val" id="rdRateLabel">6.5%</span></label>
+          <div class="inline-num">
+            <input type="number" id="rdRate" min="0" step="0.1" value="6.5">
+            <input type="range" id="rdRateRange" min="1" max="12" step="0.1" value="6.5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Tenure (months) <span class="val" id="rdMonthsLabel">36 mo</span></label>
+          <div class="inline-num">
+            <input type="number" id="rdMonths" min="0" step="1" value="36">
+            <input type="range" id="rdMonthsRange" min="6" max="120" step="1" value="36">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="rdInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="rdInfl" min="0" step="0.5" value="6">
+            <input type="range" id="rdInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Maturity value</div><div class="value" id="rdMaturity">₹0</div></div>
+          <div class="result-figure"><div class="label">Total deposited</div><div class="value" id="rdDeposited">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="rdReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="rdChart"></canvas></div>
+        <div class="footnote">Uses quarterly compounding on the running balance, the convention most Indian bank RDs follow.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SIP -->
+  <section class="panel" id="panel-sip">
+    <div class="panel-head"><span class="num">03</span><h2>SIP — Systematic Investment Plan</h2></div>
+    <p class="panel-desc">Invest a fixed amount every month into a market-linked fund. Returns aren't guaranteed like a deposit — this shows what an assumed average annual return compounds into.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Monthly investment <span class="val" id="sipAmtLabel">₹10,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="sipAmt" min="0" step="500" value="10000">
+            <input type="range" id="sipAmtRange" min="500" max="200000" step="500" value="10000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Expected annual return <span class="val" id="sipRetLabel">12%</span></label>
+          <div class="inline-num">
+            <input type="number" id="sipRet" step="0.5" value="12">
+            <input type="range" id="sipRetRange" min="1" max="25" step="0.5" value="12">
+          </div>
+        </div>
+        <div class="field">
+          <label>Investment period (years) <span class="val" id="sipYrsLabel">10 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="sipYrs" min="0" step="1" value="10">
+            <input type="range" id="sipYrsRange" min="1" max="35" step="1" value="10">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual step-up in SIP <span class="val" id="sipStepLabel">0%</span></label>
+          <div class="inline-num">
+            <input type="number" id="sipStep" min="0" step="1" value="0">
+            <input type="range" id="sipStepRange" min="0" max="20" step="1" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="sipInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="sipInfl" min="0" step="0.5" value="6">
+            <input type="range" id="sipInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Future value</div><div class="value" id="sipFuture">₹0</div></div>
+          <div class="result-figure"><div class="label">Invested amount</div><div class="value" id="sipInvested">₹0</div></div>
+          <div class="result-figure"><div class="label">Wealth gained</div><div class="value" id="sipGain">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="sipReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="sipChart"></canvas></div>
+        <div class="footnote">Step-up increases your monthly instalment by the chosen percentage at the start of each year. Returns are illustrative, not a promise.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lumpsum -->
+  <section class="panel" id="panel-lumpsum">
+    <div class="panel-head"><span class="num">04</span><h2>Lumpsum Growth</h2></div>
+    <p class="panel-desc">Invest once, let it compound. This is the one-shot cousin of a SIP — useful for bonuses, maturity payouts, or inheritance you want put to work.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Investment amount <span class="val" id="lsAmtLabel">₹5,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="lsAmt" min="0" step="1000" value="500000">
+            <input type="range" id="lsAmtRange" min="1000" max="10000000" step="1000" value="500000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Expected annual return <span class="val" id="lsRetLabel">12%</span></label>
+          <div class="inline-num">
+            <input type="number" id="lsRet" step="0.5" value="12">
+            <input type="range" id="lsRetRange" min="1" max="25" step="0.5" value="12">
+          </div>
+        </div>
+        <div class="field">
+          <label>Investment period (years) <span class="val" id="lsYrsLabel">10 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="lsYrs" min="0" step="1" value="10">
+            <input type="range" id="lsYrsRange" min="1" max="35" step="1" value="10">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="lsInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="lsInfl" min="0" step="0.5" value="6">
+            <input type="range" id="lsInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Future value</div><div class="value" id="lsFuture">₹0</div></div>
+          <div class="result-figure"><div class="label">Wealth gained</div><div class="value" id="lsGain">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="lsReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="lsChart"></canvas></div>
+        <div class="footnote">Compounded annually on the assumed return, no withdrawals or additions along the way.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SWP -->
+  <section class="panel" id="panel-swp">
+    <div class="panel-head"><span class="num">05</span><h2>SWP — Systematic Withdrawal Plan</h2></div>
+    <p class="panel-desc">Park a corpus in a fund and draw a fixed amount out every month, typically in retirement. See how long the money lasts, or what's left after your chosen period.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Initial corpus <span class="val" id="swpCorpusLabel">₹25,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="swpCorpus" min="0" step="10000" value="2500000">
+            <input type="range" id="swpCorpusRange" min="10000" max="20000000" step="10000" value="2500000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Monthly withdrawal <span class="val" id="swpWithdrawLabel">₹15,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="swpWithdraw" min="0" step="500" value="15000">
+            <input type="range" id="swpWithdrawRange" min="500" max="300000" step="500" value="15000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Expected annual return <span class="val" id="swpRetLabel">8%</span></label>
+          <div class="inline-num">
+            <input type="number" id="swpRet" step="0.5" value="8">
+            <input type="range" id="swpRetRange" min="1" max="20" step="0.5" value="8">
+          </div>
+        </div>
+        <div class="field">
+          <label>Withdrawal period (years) <span class="val" id="swpYrsLabel">20 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="swpYrs" min="0" step="1" value="20">
+            <input type="range" id="swpYrsRange" min="1" max="40" step="1" value="20">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual step-up in withdrawal <span class="val" id="swpStepLabel">0%</span></label>
+          <div class="inline-num">
+            <input type="number" id="swpStep" min="0" step="1" value="0">
+            <input type="range" id="swpStepRange" min="0" max="15" step="1" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate (for real value) <span class="val" id="swpInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="swpInfl" min="0" step="0.5" value="6">
+            <input type="range" id="swpInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label" id="swpEndLabel">Balance after period</div><div class="value" id="swpEnd">₹0</div></div>
+          <div class="result-figure"><div class="label">Total withdrawn</div><div class="value" id="swpTotal">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Balance in today's money (inflation-adjusted)</div><div class="value" id="swpEndReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="swpChart"></canvas></div>
+        <div class="footnote" id="swpFootnote">If withdrawals exceed what returns can sustain, the corpus runs out before your chosen period ends — the chart marks that point.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CAGR -->
+  <section class="panel" id="panel-cagr">
+    <div class="panel-head"><span class="num">06</span><h2>CAGR — Compound Annual Growth Rate</h2></div>
+    <p class="panel-desc">Work backwards from a starting and ending value to find the single steady annual rate that would explain the change — handy for judging any investment after the fact.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Starting value <span class="val" id="cagrStartLabel">₹1,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="cagrStart" min="0" step="1000" value="100000">
+            <input type="range" id="cagrStartRange" min="1000" max="10000000" step="1000" value="100000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Ending value <span class="val" id="cagrEndLabel">₹2,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="cagrEnd" min="0" step="1000" value="200000">
+            <input type="range" id="cagrEndRange" min="1000" max="10000000" step="1000" value="200000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Duration (years) <span class="val" id="cagrYrsLabel">5 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="cagrYrs" min="0" step="1" value="5">
+            <input type="range" id="cagrYrsRange" min="1" max="40" step="1" value="5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="cagrInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="cagrInfl" min="0" step="0.5" value="6">
+            <input type="range" id="cagrInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">CAGR</div><div class="value" id="cagrResult">0%</div></div>
+          <div class="result-figure"><div class="label">Inflation-adjusted (real) return</div><div class="value" id="cagrReal">0%</div></div>
+        </div>
+        <div class="chart-wrap"><canvas id="cagrChart"></canvas></div>
+        <div class="footnote">CAGR smooths out year-to-year bumps into one steady annual figure — it describes the journey's average pace, not the actual ride. Real return = (1+CAGR)/(1+inflation) − 1.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Compound Interest -->
+  <section class="panel" id="panel-compound">
+    <div class="panel-head"><span class="num">07</span><h2>Compound Interest Calculator</h2></div>
+    <p class="panel-desc">The general-purpose version of an FD calculation — see how any lump sum grows at any compounding frequency, independent of a specific bank product.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Principal amount <span class="val" id="ciPrincipalLabel">₹1,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="ciPrincipal" min="0" step="1000" value="100000">
+            <input type="range" id="ciPrincipalRange" min="1000" max="5000000" step="1000" value="100000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual interest rate <span class="val" id="ciRateLabel">7.0%</span></label>
+          <div class="inline-num">
+            <input type="number" id="ciRate" min="0" step="0.1" value="7">
+            <input type="range" id="ciRateRange" min="1" max="20" step="0.1" value="7">
+          </div>
+        </div>
+        <div class="field">
+          <label>Time period (years) <span class="val" id="ciYearsLabel">5 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="ciYears" min="0" step="1" value="5">
+            <input type="range" id="ciYearsRange" min="1" max="40" step="1" value="5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Compounding frequency</label>
+          <select id="ciFreq" class="plain-select">
+            <option value="1">Annually</option>
+            <option value="2">Semi-annually</option>
+            <option value="4" selected>Quarterly</option>
+            <option value="12">Monthly</option>
+            <option value="365">Daily</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="ciInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="ciInfl" min="0" step="0.5" value="6">
+            <input type="range" id="ciInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Final amount</div><div class="value" id="ciFinal">₹0</div></div>
+          <div class="result-figure"><div class="label">Interest earned</div><div class="value" id="ciInterest">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="ciReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="ciChart"></canvas></div>
+        <div class="footnote">Uses A = P(1 + r/n)^(nt). Same formula an FD uses, just without banking terms attached.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Loan Payoff -->
+  <section class="panel" id="panel-loan">
+    <div class="panel-head"><span class="num">08</span><h2>Loan Payoff Calculator</h2></div>
+    <p class="panel-desc">Set a fixed monthly payment against an existing loan and see exactly how many months it takes to clear it, and what it costs in interest.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Outstanding loan balance <span class="val" id="loanBalLabel">₹5,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="loanBal" min="0" step="1000" value="500000">
+            <input type="range" id="loanBalRange" min="1000" max="10000000" step="1000" value="500000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual interest rate <span class="val" id="loanRateLabel">10.0%</span></label>
+          <div class="inline-num">
+            <input type="number" id="loanRate" min="0" step="0.1" value="10">
+            <input type="range" id="loanRateRange" min="1" max="30" step="0.1" value="10">
+          </div>
+        </div>
+        <div class="field">
+          <label>Your monthly payment <span class="val" id="loanPayLabel">₹10,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="loanPay" min="0" step="500" value="10000">
+            <input type="range" id="loanPayRange" min="500" max="500000" step="500" value="10000">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label" id="loanTimeLabel">Time to pay off</div><div class="value" id="loanTime">0</div></div>
+          <div class="result-figure"><div class="label">Total interest paid</div><div class="value" id="loanInterest">₹0</div></div>
+        </div>
+        <div class="chart-wrap"><canvas id="loanChart"></canvas></div>
+        <div class="footnote" id="loanFootnote">Assumes a fixed payment every month with no prepayments — the balance line shows how the loan winds down.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Credit Card Payoff -->
+  <section class="panel" id="panel-cc">
+    <div class="panel-head"><span class="num">09</span><h2>Credit Card Payoff</h2></div>
+    <p class="panel-desc">Compare paying a fixed amount every month against paying only the card's minimum — the gap between the two is usually the most expensive lesson in personal finance.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Card balance <span class="val" id="ccBalLabel">₹80,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="ccBal" min="0" step="1000" value="80000">
+            <input type="range" id="ccBalRange" min="1000" max="1000000" step="1000" value="80000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual interest rate (APR) <span class="val" id="ccRateLabel">36%</span></label>
+          <div class="inline-num">
+            <input type="number" id="ccRate" min="0" step="0.5" value="36">
+            <input type="range" id="ccRateRange" min="10" max="48" step="0.5" value="36">
+          </div>
+        </div>
+        <div class="field">
+          <label>Your fixed monthly payment <span class="val" id="ccPayLabel">₹6,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="ccPay" min="0" step="500" value="6000">
+            <input type="range" id="ccPayRange" min="500" max="200000" step="500" value="6000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Minimum payment <span class="val" id="ccMinPctLabel">3%</span> of balance</label>
+          <div class="inline-num">
+            <input type="number" id="ccMinPct" min="0" step="0.5" value="3">
+            <input type="range" id="ccMinPctRange" min="1" max="10" step="0.5" value="3">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure small"><div class="label">Your payment — payoff time</div><div class="value" id="ccYourTime">0</div></div>
+          <div class="result-figure small"><div class="label">Your payment — interest</div><div class="value" id="ccYourInterest">₹0</div></div>
+        </div>
+        <div class="result-row">
+          <div class="result-figure small"><div class="label">Minimum only — payoff time</div><div class="value brick" id="ccMinTime">0</div></div>
+          <div class="result-figure small"><div class="label">Minimum only — interest</div><div class="value brick" id="ccMinInterest">₹0</div></div>
+        </div>
+        <div class="chart-wrap"><canvas id="ccChart"></canvas></div>
+        <div class="footnote">The minimum-payment line recalculates each month as a percentage of whatever balance remains, which is why it drags on so much longer.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Budget 50/30/20 -->
+  <section class="panel" id="panel-budget">
+    <div class="panel-head"><span class="num">10</span><h2>Budget Calculator — 50/30/20</h2></div>
+    <p class="panel-desc">A simple split for take-home pay: half to needs, less than a third to wants, and the rest to savings or debt paydown.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field plain">
+          <label>Monthly take-home income</label>
+          <div class="numwrap"><span>₹</span><input type="number" id="budgetIncome" min="0" step="1000" value="60000"></div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure small"><div class="label">Needs (50%)</div><div class="value" id="budgetNeeds">₹0</div></div>
+          <div class="result-figure small"><div class="label">Wants (30%)</div><div class="value" id="budgetWants">₹0</div></div>
+          <div class="result-figure small"><div class="label">Savings / debt (20%)</div><div class="value" id="budgetSavings">₹0</div></div>
+        </div>
+        <div class="chart-wrap"><canvas id="budgetChart"></canvas></div>
+        <div class="footnote">Needs: rent, groceries, utilities, minimum debt payments. Wants: dining out, entertainment, subscriptions. Adjust the split to fit your own life — this is a starting point, not a rule.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Sukanya Samriddhi Yojana -->
+  <section class="panel" id="panel-ssy">
+    <div class="panel-head"><span class="num">11</span><h2>Sukanya Samriddhi Yojana</h2><span class="badge-tag">Rate: 8.2% p.a., Q2 FY26–27</span></div>
+    <p class="panel-desc">A government-backed savings scheme for a girl child: deposit for 15 years, and the account matures 21 years after opening. Interest is reviewed quarterly by the Ministry of Finance — this uses the current published rate.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Annual deposit <span class="val" id="ssyDepositLabel">₹50,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="ssyDeposit" min="250" step="1000" value="50000">
+            <input type="range" id="ssyDepositRange" min="250" max="150000" step="1000" value="50000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Interest rate <span class="val" id="ssyRateLabel">8.2%</span></label>
+          <div class="inline-num">
+            <input type="number" id="ssyRate" min="0" step="0.1" value="8.2">
+            <input type="range" id="ssyRateRange" min="1" max="12" step="0.1" value="8.2">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="ssyInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="ssyInfl" min="0" step="0.5" value="6">
+            <input type="range" id="ssyInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Maturity value (year 21)</div><div class="value" id="ssyMaturity">₹0</div></div>
+          <div class="result-figure"><div class="label">Total deposited</div><div class="value" id="ssyDeposited">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="ssyReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="ssyChart"></canvas></div>
+        <div class="footnote">Deposits run for 15 years from account opening; the balance then keeps compounding, untouched, until it matures in year 21. Cap is ₹1.5 lakh/year; the account earns tax-free interest under Section 80C.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Income Tax -->
+  <section class="panel" id="panel-tax">
+    <div class="panel-head"><span class="num">12</span><h2>Income Tax Calculator</h2><span class="badge-tag">FY 2025–26 / 2026–27</span></div>
+    <p class="panel-desc">Estimates tax for individuals/HUF (slab-based, both regimes) and a flat-rate estimate for firms and companies. It doesn't cover every deduction (80C, 80D, HRA, etc.) or surcharge — treat it as a working estimate, not a filing.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Annual gross income <span class="val" id="taxIncomeLabel">₹12,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="taxIncome" min="0" step="10000" value="1200000">
+            <input type="range" id="taxIncomeRange" min="0" max="10000000" step="10000" value="1200000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Taxpayer type</label>
+          <select id="taxPayerType" class="plain-select">
+            <option value="individual" selected>Individual</option>
+            <option value="huf">HUF</option>
+            <option value="firm">Firm / LLP</option>
+            <option value="company">Domestic Company</option>
+          </select>
+        </div>
+        <div class="field" id="taxAgeField">
+          <label>Age <span class="val" id="taxAgeLabel">30 yr</span> <span class="val" id="taxAgeCategory" style="text-transform:none;">Below 60</span></label>
+          <div class="inline-num">
+            <input type="number" id="taxAge" min="0" step="1" value="30">
+            <input type="range" id="taxAgeRange" min="18" max="100" step="1" value="30">
+          </div>
+        </div>
+        <div class="field" id="taxResidentField">
+          <label>Residential status</label>
+          <select id="taxResident" class="plain-select">
+            <option value="resident" selected>Resident</option>
+            <option value="nri">Non-Resident (NRI) / RNOR</option>
+          </select>
+        </div>
+        <div class="field" id="taxRegimeField">
+          <label>Tax regime</label>
+          <div class="radio-row">
+            <label><input type="radio" name="taxRegime" value="new" checked> New regime (default, u/s 115BAC)</label>
+            <label><input type="radio" name="taxRegime" value="old"> Old regime (opt out of 115BAC)</label>
+          </div>
+        </div>
+        <div class="field" id="taxStdDedField">
+          <label style="justify-content:flex-start;gap:8px;"><input type="checkbox" id="taxStdDed" checked style="accent-color:var(--green);"> Apply standard deduction (salaried) — <span id="taxStdDedAmt">₹75,000</span></label>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure small"><div class="label">Taxable income</div><div class="value" id="taxTaxable">₹0</div></div>
+          <div class="result-figure small"><div class="label">Total tax + cess</div><div class="value brick" id="taxTotal">₹0</div></div>
+        </div>
+        <div class="result-row">
+          <div class="result-figure small"><div class="label">Effective tax rate</div><div class="value" id="taxEffective">0%</div></div>
+          <div class="result-figure small"><div class="label">Take-home (monthly)</div><div class="value" id="taxTakehome">₹0</div></div>
+        </div>
+        <div class="chart-wrap"><canvas id="taxChart"></canvas></div>
+        <div class="footnote" id="taxFootnote">New-regime slabs: nil to ₹4L, 5% to ₹8L, 10% to ₹12L, 15% to ₹16L, 20% to ₹20L, 25% to ₹24L, 30% above. Old regime (resident, below 60): nil to ₹2.5L, 5% to ₹5L, 20% to ₹10L, 30% above — with higher nil bands for senior (₹3L) and super senior (₹5L) resident citizens. Section 87A rebate (new regime: taxable ≤₹12L; old regime: ≤₹5L) applies only to resident individuals. 4% cess added on top. Firms/LLPs: flat 30%. Domestic companies: flat 25% (approximate, ignores surcharge and turnover conditions).</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PPF -->
+  <section class="panel" id="panel-ppf">
+    <div class="panel-head"><span class="num">13</span><h2>PPF Calculator</h2><span class="badge-tag">Rate: 7.1% p.a., Q2 FY26–27</span></div>
+    <p class="panel-desc">Public Provident Fund — a 15-year government scheme with annual compounding, tax-free interest, and a rate reviewed every quarter.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Annual deposit <span class="val" id="ppfDepositLabel">₹1,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="ppfDeposit" min="500" step="5000" value="100000">
+            <input type="range" id="ppfDepositRange" min="500" max="150000" step="5000" value="100000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Interest rate <span class="val" id="ppfRateLabel">7.1%</span></label>
+          <div class="inline-num">
+            <input type="number" id="ppfRate" min="0" step="0.1" value="7.1">
+            <input type="range" id="ppfRateRange" min="1" max="12" step="0.1" value="7.1">
+          </div>
+        </div>
+        <div class="field">
+          <label>Tenure (years) <span class="val" id="ppfYearsLabel">15 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="ppfYears" min="15" step="1" value="15">
+            <input type="range" id="ppfYearsRange" min="15" max="40" step="1" value="15">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="ppfInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="ppfInfl" min="0" step="0.5" value="6">
+            <input type="range" id="ppfInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Maturity value</div><div class="value" id="ppfMaturity">₹0</div></div>
+          <div class="result-figure"><div class="label">Total deposited</div><div class="value" id="ppfDeposited">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="ppfReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="ppfChart"></canvas></div>
+        <div class="footnote">Minimum tenure is 15 years; it can then be extended in blocks of 5. Cap is ₹1.5 lakh/year, minimum ₹500/year.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EPF -->
+  <section class="panel" id="panel-epf">
+    <div class="panel-head"><span class="num">14</span><h2>EPF Calculator</h2><span class="badge-tag">Rate: 8.25% p.a., FY 2025–26</span></div>
+    <p class="panel-desc">Project your Employees' Provident Fund balance to retirement from your current basic + DA, contribution rates, and expected salary growth.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Current monthly basic + DA <span class="val" id="epfSalaryLabel">₹40,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="epfSalary" min="0" step="1000" value="40000">
+            <input type="range" id="epfSalaryRange" min="1000" max="500000" step="1000" value="40000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Current age <span class="val" id="epfAgeLabel">30 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="epfAge" min="18" step="1" value="30">
+            <input type="range" id="epfAgeRange" min="18" max="59" step="1" value="30">
+          </div>
+        </div>
+        <div class="field">
+          <label>Retirement age <span class="val" id="epfRetireLabel">58 yr</span></label>
+          <div class="inline-num">
+            <input type="number" id="epfRetire" min="19" step="1" value="58">
+            <input type="range" id="epfRetireRange" min="19" max="65" step="1" value="58">
+          </div>
+        </div>
+        <div class="field">
+          <label>Current EPF balance <span class="val" id="epfBalLabel">₹2,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="epfBal" min="0" step="10000" value="200000">
+            <input type="range" id="epfBalRange" min="0" max="10000000" step="10000" value="200000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual salary growth <span class="val" id="epfStepLabel">5%</span></label>
+          <div class="inline-num">
+            <input type="number" id="epfStep" min="0" step="0.5" value="5">
+            <input type="range" id="epfStepRange" min="0" max="15" step="0.5" value="5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Inflation rate <span class="val" id="epfInflLabel">6%</span></label>
+          <div class="inline-num">
+            <input type="number" id="epfInfl" min="0" step="0.5" value="6">
+            <input type="range" id="epfInflRange" min="0" max="15" step="0.5" value="6">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Corpus at retirement</div><div class="value" id="epfMaturity">₹0</div></div>
+          <div class="result-figure"><div class="label">Total contributed</div><div class="value" id="epfContributed">₹0</div></div>
+        </div>
+        <div class="result-figure small"><div class="label">Inflation-adjusted (today's money)</div><div class="value" id="epfReal">₹0</div></div>
+        <div class="chart-wrap"><canvas id="epfChart"></canvas></div>
+        <div class="footnote">Uses a combined 12% employee + 3.67% employer contribution (the portion that goes to EPF, not EPS), compounded monthly at the current rate. Illustrative — your payslip may differ slightly.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EMI -->
+  <section class="panel" id="panel-emi">
+    <div class="panel-head"><span class="num">15</span><h2>EMI Calculator</h2></div>
+    <p class="panel-desc">The monthly instalment for any loan — home, car, or personal — from the amount, rate, and tenure.</p>
+    <div class="calc-grid">
+      <div class="calc-inputs">
+        <div class="field">
+          <label>Loan amount <span class="val" id="emiAmtLabel">₹20,00,000</span></label>
+          <div class="inline-num">
+            <input type="number" id="emiAmt" min="0" step="10000" value="2000000">
+            <input type="range" id="emiAmtRange" min="10000" max="20000000" step="10000" value="2000000">
+          </div>
+        </div>
+        <div class="field">
+          <label>Annual interest rate <span class="val" id="emiRateLabel">8.5%</span></label>
+          <div class="inline-num">
+            <input type="number" id="emiRate" min="0" step="0.1" value="8.5">
+            <input type="range" id="emiRateRange" min="1" max="24" step="0.1" value="8.5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Tenure (months) <span class="val" id="emiMonthsLabel">240 mo</span></label>
+          <div class="inline-num">
+            <input type="number" id="emiMonths" min="1" step="1" value="240">
+            <input type="range" id="emiMonthsRange" min="6" max="360" step="1" value="240">
+          </div>
+        </div>
+      </div>
+      <div class="calc-results">
+        <div class="result-row">
+          <div class="result-figure"><div class="label">Monthly EMI</div><div class="value" id="emiValue">₹0</div></div>
+          <div class="result-figure"><div class="label">Total interest</div><div class="value" id="emiInterest">₹0</div></div>
+        </div>
+        <div class="chart-wrap"><canvas id="emiChart"></canvas></div>
+        <div class="footnote">EMI = P·r·(1+r)ⁿ / ((1+r)ⁿ−1). The chart shows the outstanding balance winding down to zero over the tenure.</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Built as a static page — all math runs locally in your browser, nothing is sent anywhere. Figures are illustrative and not financial advice.
+    <div style="margin-top:10px;">&copy; 2026 Durga Prasad Khatua. All rights reserved.</div>
+  </div>
+</footer>
+
+<script>
+// ---------- helpers ----------
+function inr(n){
+  n = Math.round(n);
+  if(!isFinite(n)) n = 0;
+  const neg = n < 0;
+  n = Math.abs(n);
+  let s = n.toString();
+  let last3 = s.slice(-3);
+  let rest = s.slice(0,-3);
+  if(rest !== '') last3 = ',' + last3;
+  let formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + last3;
+  return (neg?'-':'') + '₹' + formatted;
+}
+function pct(n,d){ if(d===undefined) d=1; return n.toFixed(d) + '%'; }
+
+// Binds a free-typing number input (no upper limit) to a slider that's just a
+// visual/quick-adjust helper. The number input is always the source of truth
+// used in calculations; the slider clamps its own thumb position only.
+function bindField(numId, rangeId, calcFn){
+  const num = document.getElementById(numId);
+  const range = document.getElementById(rangeId);
+  num.addEventListener('input', ()=>{
+    let v = parseFloat(num.value);
+    if(!isNaN(v)){
+      range.value = Math.min(Math.max(v, +range.min), +range.max);
+    }
+    calcFn();
+  });
+  range.addEventListener('input', ()=>{
+    num.value = range.value;
+    calcFn();
+  });
+}
+
+let charts = {};
+function drawChart(id, labels, datasets, opts, type){
+  type = type || 'line';
+  const ctx = document.getElementById(id).getContext('2d');
+  if(charts[id]) charts[id].destroy();
+  const base = {
+    responsive:true, maintainAspectRatio:false,
+    interaction:{mode:'index',intersect:false},
+    plugins:{ legend:{display: datasets.length>1, labels:{font:{family:'IBM Plex Mono',size:11}}}, tooltip:{callbacks:{label:(c)=>(c.dataset.label||'')+': '+inr(c.parsed.y!==undefined?c.parsed.y:c.parsed)}} },
+    scales:{
+      x:{ grid:{display:false}, ticks:{font:{family:'IBM Plex Mono',size:10}} },
+      y:{ grid:{color:'rgba(27,42,34,0.08)'}, ticks:{font:{family:'IBM Plex Mono',size:10}, callback:(v)=>{
+        if(Math.abs(v)>=100000) return '₹'+(v/100000).toFixed(1)+'L';
+        return '₹'+v;
+      }} }
+    }
+  };
+  if(type==='line'){ base.elements = { point:{radius:0}, line:{tension:0.15, borderWidth:2.5} }; }
+  if(type==='doughnut'){ delete base.scales; base.plugins.legend.display = true; }
+  charts[id] = new Chart(ctx, { type, data:{ labels, datasets }, options: Object.assign(base, opts||{}) });
+}
+
+// ---------- tabs ----------
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.dataset.panel).classList.add('active');
+  });
+});
+
+// ---------- hero ticker (SIP demo) ----------
+function updateTicker(){
+  const amt = +document.getElementById('tkAmt').value;
+  const yrs = +document.getElementById('tkYrs').value;
+  const ret = +document.getElementById('tkRet').value;
+  document.getElementById('tkAmtLabel').textContent = inr(amt);
+  document.getElementById('tkYrsLabel').textContent = yrs + ' yr';
+  document.getElementById('tkRetLabel').textContent = ret + '%';
+
+  const months = yrs*12;
+  const r = ret/1200;
+  let fv = 0;
+  if(r>0) fv = amt * ((Math.pow(1+r, months) - 1) / r) * (1+r);
+  else fv = amt*months;
+  const invested = amt*months;
+  document.getElementById('tkResult').textContent = inr(fv);
+  document.getElementById('tkNote').textContent = `You'll put in ${inr(invested)} of your own money over ${yrs} year${yrs>1?'s':''}.`;
+}
+bindField('tkAmt','tkAmtRange', updateTicker);
+bindField('tkYrs','tkYrsRange', updateTicker);
+bindField('tkRet','tkRetRange', updateTicker);
+updateTicker();
+
+// ---------- FD ----------
+function calcFD(){
+  const principal = +document.getElementById('fdPrincipal').value;
+  document.getElementById('fdPrincipalRange').value = principal;
+  document.getElementById('fdPrincipalLabel').textContent = inr(principal);
+  const rate = +document.getElementById('fdRate').value;
+  document.getElementById('fdRateLabel').textContent = rate.toFixed(1)+'%';
+  const years = +document.getElementById('fdYears').value;
+  document.getElementById('fdYearsLabel').textContent = years+' yr';
+  const n = +document.getElementById('fdFreq').value;
+  const infl = +document.getElementById('fdInfl').value;
+  document.getElementById('fdInflLabel').textContent = infl.toFixed(1)+'%';
+
+  const maturity = principal * Math.pow(1 + (rate/100)/n, n*years);
+  document.getElementById('fdMaturity').textContent = inr(maturity);
+  document.getElementById('fdInterest').textContent = inr(maturity-principal);
+  document.getElementById('fdReal').textContent = inr(maturity / Math.pow(1+infl/100, years));
+
+  const labels=[], data=[];
+  for(let y=0;y<=years;y++){ labels.push('Yr '+y); data.push(principal*Math.pow(1+(rate/100)/n, n*y)); }
+  drawChart('fdChart', labels, [{label:'Balance', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('fdPrincipal','fdPrincipalRange', calcFD);
+bindField('fdRate','fdRateRange', calcFD);
+bindField('fdYears','fdYearsRange', calcFD);
+bindField('fdInfl','fdInflRange', calcFD);
+document.getElementById('fdFreq').addEventListener('input', calcFD);
+calcFD();
+
+// ---------- RD ----------
+function calcRD(){
+  const amt = +document.getElementById('rdAmt').value;
+  document.getElementById('rdAmtLabel').textContent = inr(amt);
+  const rate = +document.getElementById('rdRate').value;
+  document.getElementById('rdRateLabel').textContent = rate.toFixed(1)+'%';
+  const months = +document.getElementById('rdMonths').value;
+  document.getElementById('rdMonthsLabel').textContent = months+' mo';
+  const infl = +document.getElementById('rdInfl').value;
+  document.getElementById('rdInflLabel').textContent = infl.toFixed(1)+'%';
+
+  // quarterly compounding on running balance, monthly deposits
+  const qRate = rate/400;
+  let balance = 0;
+  const labels=[], data=[];
+  labels.push('Mo 0'); data.push(0);
+  for(let m=1;m<=months;m++){
+    balance += amt;
+    if(m % 3 === 0) balance *= (1+qRate);
+    labels.push('Mo '+m);
+    data.push(balance);
+  }
+  const deposited = amt*months;
+  document.getElementById('rdMaturity').textContent = inr(balance);
+  document.getElementById('rdDeposited').textContent = inr(deposited);
+  document.getElementById('rdReal').textContent = inr(balance / Math.pow(1+infl/100, months/12));
+  // thin labels for readability
+  const step = Math.max(1, Math.round(months/12));
+  const thinLabels = labels.filter((_,i)=> i%step===0 || i===labels.length-1);
+  const thinData = data.filter((_,i)=> i%step===0 || i===data.length-1);
+  drawChart('rdChart', thinLabels, [{label:'Balance', data:thinData, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('rdInfl','rdInflRange', calcRD);
+bindField('rdAmt','rdAmtRange', calcRD);
+bindField('rdRate','rdRateRange', calcRD);
+bindField('rdMonths','rdMonthsRange', calcRD);
+calcRD();
+
+// ---------- SIP ----------
+function calcSIP(){
+  const amt0 = +document.getElementById('sipAmt').value;
+  document.getElementById('sipAmtLabel').textContent = inr(amt0);
+  const ret = +document.getElementById('sipRet').value;
+  document.getElementById('sipRetLabel').textContent = ret.toFixed(1)+'%';
+  const years = +document.getElementById('sipYrs').value;
+  document.getElementById('sipYrsLabel').textContent = years+' yr';
+  const step = +document.getElementById('sipStep').value;
+  document.getElementById('sipStepLabel').textContent = step+'%';
+  const infl = +document.getElementById('sipInfl').value;
+  document.getElementById('sipInflLabel').textContent = infl.toFixed(1)+'%';
+
+  const r = ret/1200;
+  let balance = 0, invested = 0, amt = amt0;
+  const labels=['Yr 0'], data=[0], investedSeries=[0];
+  for(let y=1;y<=years;y++){
+    for(let m=1;m<=12;m++){
+      balance += amt;
+      balance *= (1+r);
+      invested += amt;
+    }
+    labels.push('Yr '+y);
+    data.push(balance);
+    investedSeries.push(invested);
+    amt = amt0 * Math.pow(1+step/100, y);
+  }
+  document.getElementById('sipFuture').textContent = inr(balance);
+  document.getElementById('sipInvested').textContent = inr(invested);
+  document.getElementById('sipGain').textContent = inr(balance-invested);
+  document.getElementById('sipReal').textContent = inr(balance / Math.pow(1+infl/100, years));
+  drawChart('sipChart', labels, [
+    {label:'Portfolio value', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true},
+    {label:'Amount invested', data:investedSeries, borderColor:'#C98A2C', borderDash:[4,3], fill:false}
+  ]);
+}
+bindField('sipAmt','sipAmtRange', calcSIP);
+bindField('sipRet','sipRetRange', calcSIP);
+bindField('sipYrs','sipYrsRange', calcSIP);
+bindField('sipStep','sipStepRange', calcSIP);
+bindField('sipInfl','sipInflRange', calcSIP);
+calcSIP();
+
+// ---------- Lumpsum ----------
+function calcLumpsum(){
+  const amt = +document.getElementById('lsAmt').value;
+  document.getElementById('lsAmtLabel').textContent = inr(amt);
+  const ret = +document.getElementById('lsRet').value;
+  document.getElementById('lsRetLabel').textContent = ret.toFixed(1)+'%';
+  const years = +document.getElementById('lsYrs').value;
+  document.getElementById('lsYrsLabel').textContent = years+' yr';
+  const infl = +document.getElementById('lsInfl').value;
+  document.getElementById('lsInflLabel').textContent = infl.toFixed(1)+'%';
+
+  const labels=[], data=[];
+  for(let y=0;y<=years;y++){ labels.push('Yr '+y); data.push(amt*Math.pow(1+ret/100,y)); }
+  const future = amt*Math.pow(1+ret/100, years);
+  document.getElementById('lsFuture').textContent = inr(future);
+  document.getElementById('lsGain').textContent = inr(future-amt);
+  document.getElementById('lsReal').textContent = inr(future / Math.pow(1+infl/100, years));
+  drawChart('lsChart', labels, [{label:'Value', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('lsAmt','lsAmtRange', calcLumpsum);
+bindField('lsRet','lsRetRange', calcLumpsum);
+bindField('lsYrs','lsYrsRange', calcLumpsum);
+bindField('lsInfl','lsInflRange', calcLumpsum);
+calcLumpsum();
+
+// ---------- SWP ----------
+function calcSWP(){
+  const corpus = +document.getElementById('swpCorpus').value;
+  document.getElementById('swpCorpusLabel').textContent = inr(corpus);
+  const withdraw0 = +document.getElementById('swpWithdraw').value;
+  document.getElementById('swpWithdrawLabel').textContent = inr(withdraw0);
+  const ret = +document.getElementById('swpRet').value;
+  document.getElementById('swpRetLabel').textContent = ret.toFixed(1)+'%';
+  const years = +document.getElementById('swpYrs').value;
+  document.getElementById('swpYrsLabel').textContent = years+' yr';
+  const step = +document.getElementById('swpStep').value;
+  document.getElementById('swpStepLabel').textContent = step+'%';
+  const infl = +document.getElementById('swpInfl').value;
+  document.getElementById('swpInflLabel').textContent = infl.toFixed(1)+'%';
+
+  const r = ret/1200;
+  let balance = corpus, totalWithdrawn = 0, depletedAt = null, withdraw = withdraw0;
+  const labels=['Yr 0'], data=[balance];
+  const months = years*12;
+  for(let m=1;m<=months;m++){
+    if(m>1 && (m-1)%12===0) withdraw = withdraw0*Math.pow(1+step/100, Math.floor((m-1)/12));
+    balance *= (1+r);
+    balance -= withdraw;
+    totalWithdrawn += withdraw;
+    if(balance <= 0 && depletedAt===null){ depletedAt = m; balance = 0; }
+    if(m % 12 === 0){ labels.push('Yr '+(m/12)); data.push(Math.max(balance,0)); }
+  }
+  document.getElementById('swpTotal').textContent = inr(totalWithdrawn);
+  const endLabelEl = document.getElementById('swpEndLabel');
+  const endEl = document.getElementById('swpEnd');
+  const footnote = document.getElementById('swpFootnote');
+  const effectiveYears = depletedAt ? depletedAt/12 : years;
+  const realBalance = balance / Math.pow(1+infl/100, effectiveYears);
+  document.getElementById('swpEndReal').textContent = inr(realBalance);
+  if(depletedAt){
+    endLabelEl.textContent = 'Corpus lasts';
+    const yrs = Math.floor(depletedAt/12), mos = depletedAt%12;
+    endEl.textContent = yrs+'y '+mos+'m';
+    endEl.classList.add('brick');
+    footnote.textContent = `At this withdrawal rate, the corpus runs out before your ${years}-year target — around year ${yrs}, month ${mos}.`;
+  } else {
+    endLabelEl.textContent = 'Balance after '+years+' yr';
+    endEl.textContent = inr(balance);
+    endEl.classList.remove('brick');
+    footnote.textContent = `Withdrawals stay comfortably below what the assumed return generates, so the corpus survives the full period.`;
+  }
+  drawChart('swpChart', labels, [{label:'Remaining balance', data, borderColor:'#A2452F', backgroundColor:'rgba(162,69,47,0.08)', fill:true}]);
+}
+bindField('swpCorpus','swpCorpusRange', calcSWP);
+bindField('swpWithdraw','swpWithdrawRange', calcSWP);
+bindField('swpRet','swpRetRange', calcSWP);
+bindField('swpStep','swpStepRange', calcSWP);
+bindField('swpInfl','swpInflRange', calcSWP);
+bindField('swpYrs','swpYrsRange', calcSWP);
+calcSWP();
+
+// ---------- CAGR ----------
+function calcCAGR(){
+  const start = +document.getElementById('cagrStart').value;
+  document.getElementById('cagrStartLabel').textContent = inr(start);
+  const end = +document.getElementById('cagrEnd').value;
+  document.getElementById('cagrEndLabel').textContent = inr(end);
+  const years = +document.getElementById('cagrYrs').value;
+  document.getElementById('cagrYrsLabel').textContent = years+' yr';
+  const infl = +document.getElementById('cagrInfl').value;
+  document.getElementById('cagrInflLabel').textContent = infl.toFixed(1)+'%';
+
+  if(!start || start<=0 || years<=0){
+    document.getElementById('cagrResult').textContent = '—';
+    document.getElementById('cagrReal').textContent = '—';
+    drawChart('cagrChart', [], []);
+    return;
+  }
+  const cagr = (Math.pow(end/start, 1/years) - 1) * 100;
+  document.getElementById('cagrResult').textContent = pct(cagr,2);
+  const realReturn = ((1+cagr/100)/(1+infl/100) - 1) * 100;
+  document.getElementById('cagrReal').textContent = pct(realReturn,2);
+
+  const labels=[], data=[];
+  for(let y=0;y<=years;y++){ labels.push('Yr '+y); data.push(start*Math.pow(1+cagr/100,y)); }
+  drawChart('cagrChart', labels, [{label:'Implied path', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('cagrStart','cagrStartRange', calcCAGR);
+bindField('cagrEnd','cagrEndRange', calcCAGR);
+bindField('cagrYrs','cagrYrsRange', calcCAGR);
+bindField('cagrInfl','cagrInflRange', calcCAGR);
+calcCAGR();
+
+// ---------- Compound Interest ----------
+function calcCI(){
+  const p = +document.getElementById('ciPrincipal').value;
+  document.getElementById('ciPrincipalLabel').textContent = inr(p);
+  const rate = +document.getElementById('ciRate').value;
+  document.getElementById('ciRateLabel').textContent = rate.toFixed(1)+'%';
+  const years = +document.getElementById('ciYears').value;
+  document.getElementById('ciYearsLabel').textContent = years+' yr';
+  const n = +document.getElementById('ciFreq').value;
+  const infl = +document.getElementById('ciInfl').value;
+  document.getElementById('ciInflLabel').textContent = infl.toFixed(1)+'%';
+
+  const final = p * Math.pow(1 + (rate/100)/n, n*years);
+  document.getElementById('ciFinal').textContent = inr(final);
+  document.getElementById('ciInterest').textContent = inr(final-p);
+  document.getElementById('ciReal').textContent = inr(final / Math.pow(1+infl/100, years));
+  const labels=[], data=[];
+  for(let y=0;y<=years;y++){ labels.push('Yr '+y); data.push(p*Math.pow(1+(rate/100)/n, n*y)); }
+  drawChart('ciChart', labels, [{label:'Balance', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('ciPrincipal','ciPrincipalRange', calcCI);
+bindField('ciRate','ciRateRange', calcCI);
+bindField('ciYears','ciYearsRange', calcCI);
+bindField('ciInfl','ciInflRange', calcCI);
+document.getElementById('ciFreq').addEventListener('input', calcCI);
+calcCI();
+
+// ---------- Loan Payoff ----------
+function calcLoan(){
+  const bal = +document.getElementById('loanBal').value;
+  document.getElementById('loanBalLabel').textContent = inr(bal);
+  const rate = +document.getElementById('loanRate').value;
+  document.getElementById('loanRateLabel').textContent = rate.toFixed(1)+'%';
+  const pay = +document.getElementById('loanPay').value;
+  document.getElementById('loanPayLabel').textContent = inr(pay);
+
+  const r = rate/1200;
+  const footnote = document.getElementById('loanFootnote');
+  if(r>0 && pay <= bal*r){
+    document.getElementById('loanTimeLabel').textContent = 'Time to pay off';
+    document.getElementById('loanTime').textContent = 'Never';
+    document.getElementById('loanInterest').textContent = '—';
+    footnote.textContent = 'This payment doesn\u2019t even cover the monthly interest, so the balance will never shrink — raise the payment above '+inr(bal*r)+'/month.';
+    drawChart('loanChart', [], []);
+    return;
+  }
+  let months;
+  if(r>0) months = Math.ceil(-Math.log(1 - r*bal/pay) / Math.log(1+r));
+  else months = Math.ceil(bal/pay);
+  // simulate for accurate totals & chart
+  let balance = bal, totalInterest = 0;
+  const labels=['Mo 0'], data=[balance];
+  let m=0;
+  while(balance>0 && m<2000){
+    m++;
+    const interest = balance*r;
+    let payment = Math.min(pay, balance+interest);
+    balance = balance + interest - payment;
+    totalInterest += interest;
+    if(balance<0.5) balance=0;
+    if(m%Math.max(1,Math.round(months/24))===0 || balance===0){ labels.push('Mo '+m); data.push(balance); }
+  }
+  const yrs = Math.floor(m/12), mos = m%12;
+  document.getElementById('loanTimeLabel').textContent = 'Time to pay off';
+  document.getElementById('loanTime').textContent = (yrs>0?yrs+'y ':'')+mos+'m';
+  document.getElementById('loanInterest').textContent = inr(totalInterest);
+  footnote.textContent = 'Assumes a fixed payment every month with no prepayments — the balance line shows how the loan winds down.';
+  drawChart('loanChart', labels, [{label:'Remaining balance', data, borderColor:'#A2452F', backgroundColor:'rgba(162,69,47,0.08)', fill:true}]);
+}
+bindField('loanBal','loanBalRange', calcLoan);
+bindField('loanRate','loanRateRange', calcLoan);
+bindField('loanPay','loanPayRange', calcLoan);
+calcLoan();
+
+// ---------- Credit Card Payoff ----------
+function calcCC(){
+  const bal0 = +document.getElementById('ccBal').value;
+  document.getElementById('ccBalLabel').textContent = inr(bal0);
+  const apr = +document.getElementById('ccRate').value;
+  document.getElementById('ccRateLabel').textContent = apr+'%';
+  const pay = +document.getElementById('ccPay').value;
+  document.getElementById('ccPayLabel').textContent = inr(pay);
+  const minPct = +document.getElementById('ccMinPct').value;
+  document.getElementById('ccMinPctLabel').textContent = minPct+'%';
+
+  const r = apr/1200;
+  const floor = 200;
+  const capMonths = 720;
+
+  function simulateFixed(){
+    let balance = bal0, interestTotal = 0, m=0;
+    const series=[balance];
+    if(r>0 && pay<=balance*r) return {months:Infinity, interest:Infinity, series:[balance]};
+    while(balance>0 && m<capMonths){
+      m++;
+      const interest = balance*r;
+      const payment = Math.min(pay, balance+interest);
+      balance = balance+interest-payment;
+      interestTotal += interest;
+      if(balance<0.5) balance=0;
+      series.push(balance);
+    }
+    return {months:m, interest:interestTotal, series};
+  }
+  function simulateMin(){
+    let balance = bal0, interestTotal = 0, m=0;
+    const series=[balance];
+    while(balance>0 && m<capMonths){
+      m++;
+      const interest = balance*r;
+      let payment = Math.max(floor, balance*minPct/100);
+      payment = Math.min(payment, balance+interest);
+      balance = balance+interest-payment;
+      interestTotal += interest;
+      if(balance<0.5) balance=0;
+      series.push(balance);
+    }
+    return {months:m, interest:interestTotal, series};
+  }
+  const yours = simulateFixed();
+  const mins = simulateMin();
+  function fmtMonths(x){
+    if(!isFinite(x)) return 'Never';
+    if(x>=capMonths) return capMonths+'+ mo';
+    const y=Math.floor(x/12), mm=x%12;
+    return (y>0?y+'y ':'')+mm+'m';
+  }
+  document.getElementById('ccYourTime').textContent = fmtMonths(yours.months);
+  document.getElementById('ccYourInterest').textContent = isFinite(yours.interest)? inr(yours.interest) : '—';
+  document.getElementById('ccMinTime').textContent = fmtMonths(mins.months);
+  document.getElementById('ccMinInterest').textContent = isFinite(mins.interest)? inr(mins.interest) : '—';
+
+  const maxLen = Math.min(Math.max(yours.series.length, mins.series.length), 240);
+  const labels=[]; for(let i=0;i<maxLen;i++) labels.push('Mo '+i);
+  const yourData = labels.map((_,i)=> yours.series[i]!==undefined ? yours.series[i] : 0);
+  const minData = labels.map((_,i)=> mins.series[i]!==undefined ? mins.series[i] : 0);
+  drawChart('ccChart', labels, [
+    {label:'Your payment', data:yourData, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true},
+    {label:'Minimum only', data:minData, borderColor:'#A2452F', backgroundColor:'rgba(162,69,47,0.06)', fill:true}
+  ]);
+}
+bindField('ccBal','ccBalRange', calcCC);
+bindField('ccRate','ccRateRange', calcCC);
+bindField('ccPay','ccPayRange', calcCC);
+bindField('ccMinPct','ccMinPctRange', calcCC);
+calcCC();
+
+// ---------- Budget 50/30/20 ----------
+function calcBudget(){
+  const income = +document.getElementById('budgetIncome').value;
+  const needs = income*0.5, wants = income*0.3, savings = income*0.2;
+  document.getElementById('budgetNeeds').textContent = inr(needs);
+  document.getElementById('budgetWants').textContent = inr(wants);
+  document.getElementById('budgetSavings').textContent = inr(savings);
+  drawChart('budgetChart', ['Needs (50%)','Wants (30%)','Savings/debt (20%)'], [{
+    data:[needs,wants,savings],
+    backgroundColor:['#1F6F50','#C98A2C','#4B5A50']
+  }], {}, 'doughnut');
+}
+document.getElementById('budgetIncome').addEventListener('input', calcBudget);
+calcBudget();
+
+// ---------- Sukanya Samriddhi Yojana ----------
+function calcSSY(){
+  const deposit = +document.getElementById('ssyDeposit').value;
+  document.getElementById('ssyDepositLabel').textContent = inr(deposit);
+  const rate = +document.getElementById('ssyRate').value;
+  document.getElementById('ssyRateLabel').textContent = rate.toFixed(1)+'%';
+  const infl = +document.getElementById('ssyInfl').value;
+  document.getElementById('ssyInflLabel').textContent = infl.toFixed(1)+'%';
+
+  let balance = 0, deposited = 0;
+  const labels=['Yr 0'], data=[0];
+  for(let y=1;y<=21;y++){
+    if(y<=15){ balance += deposit; deposited += deposit; }
+    balance *= (1+rate/100);
+    labels.push('Yr '+y); data.push(balance);
+  }
+  document.getElementById('ssyMaturity').textContent = inr(balance);
+  document.getElementById('ssyDeposited').textContent = inr(deposited);
+  document.getElementById('ssyReal').textContent = inr(balance / Math.pow(1+infl/100, 21));
+  drawChart('ssyChart', labels, [{label:'Balance', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('ssyDeposit','ssyDepositRange', calcSSY);
+bindField('ssyRate','ssyRateRange', calcSSY);
+bindField('ssyInfl','ssyInflRange', calcSSY);
+calcSSY();
+
+// ---------- Income Tax (India) ----------
+function slabTax(taxable, slabs){
+  let tax=0;
+  for(const [lo,hi,rate] of slabs){
+    if(taxable>lo){ tax += (Math.min(taxable,hi)-lo)*rate; }
+  }
+  return tax;
+}
+function newRegimeSlabs(){
+  return [
+    [0,400000,0],[400000,800000,0.05],[800000,1200000,0.10],
+    [1200000,1600000,0.15],[1600000,2000000,0.20],[2000000,2400000,0.25],
+    [2400000,Infinity,0.30]
+  ];
+}
+function oldRegimeSlabs(ageCategory){
+  if(ageCategory==='super') return [[0,500000,0],[500000,1000000,0.20],[1000000,Infinity,0.30]];
+  if(ageCategory==='senior') return [[0,300000,0],[300000,500000,0.05],[500000,1000000,0.20],[1000000,Infinity,0.30]];
+  return [[0,250000,0],[250000,500000,0.05],[500000,1000000,0.20],[1000000,Infinity,0.30]];
+}
+function getAgeCategory(age, resident){
+  if(!resident) return 'below60'; // enhanced senior/super-senior slabs are resident-only
+  if(age>=80) return 'super';
+  if(age>=60) return 'senior';
+  return 'below60';
+}
+function calcTax(){
+  const gross = +document.getElementById('taxIncome').value;
+  document.getElementById('taxIncomeLabel').textContent = inr(gross);
+  const payerType = document.getElementById('taxPayerType').value;
+  const age = +document.getElementById('taxAge').value;
+  document.getElementById('taxAgeLabel').textContent = age+' yr';
+  const resident = document.getElementById('taxResident').value==='resident';
+  const regime = document.querySelector('input[name=taxRegime]:checked').value;
+
+  const isIndividualLike = (payerType==='individual' || payerType==='huf');
+  // toggle field visibility
+  document.getElementById('taxAgeField').style.display = isIndividualLike ? '' : 'none';
+  document.getElementById('taxResidentField').style.display = isIndividualLike ? '' : 'none';
+  document.getElementById('taxRegimeField').style.display = isIndividualLike ? '' : 'none';
+  document.getElementById('taxStdDedField').style.display = isIndividualLike ? '' : 'none';
+
+  const ageCategory = getAgeCategory(age, resident && payerType==='individual');
+  const categoryLabel = ageCategory==='super' ? 'Super senior (80+)' : ageCategory==='senior' ? 'Senior citizen (60–79)' : 'Below 60';
+  document.getElementById('taxAgeCategory').textContent = categoryLabel;
+
+  let taxable, tax, stdDedAmt = 0;
+
+  if(!isIndividualLike){
+    // Firm/LLP or Company: flat rate, no slabs, no standard deduction, no rebate
+    taxable = gross;
+    const flatRate = payerType==='firm' ? 0.30 : 0.25; // company: approx, ignoring turnover/surcharge
+    tax = taxable*flatRate;
+    document.getElementById('taxFootnote').textContent = payerType==='firm'
+      ? 'Firms/LLPs are taxed at a flat 30% + 4% cess. Surcharge above ₹1 crore and various deductions aren\u2019t included here.'
+      : 'Domestic companies are taxed at approximately 25% + 4% cess (assumes turnover-based concessional rate). Surcharge, MAT, and exact turnover conditions aren\u2019t included here.';
+  } else {
+    stdDedAmt = document.getElementById('taxStdDed').checked ? (regime==='new' ? 75000 : 50000) : 0;
+    document.getElementById('taxStdDedAmt').textContent = inr(regime==='new' ? 75000 : 50000);
+    taxable = Math.max(0, gross-stdDedAmt);
+    const slabs = regime==='new' ? newRegimeSlabs() : oldRegimeSlabs(ageCategory);
+    tax = slabTax(taxable, slabs);
+
+    // Section 87A rebate — resident individuals only (not HUF, not NRIs)
+    const rebateEligible = resident && payerType==='individual';
+    if(rebateEligible){
+      if(regime==='new' && taxable<=1200000) tax = 0;
+      if(regime==='old' && taxable<=500000) tax = 0;
+    }
+    document.getElementById('taxFootnote').textContent = regime==='new'
+      ? 'New-regime slabs: nil to ₹4L, 5% to ₹8L, 10% to ₹12L, 15% to ₹16L, 20% to ₹20L, 25% to ₹24L, 30% above — same for all ages. Section 87A rebate (taxable ≤ ₹12L) applies only to resident individuals. 4% cess added on top.'
+      : `Old-regime slabs (${categoryLabel.toLowerCase()}, resident): ${ageCategory==='super'?'nil to ₹5L, 20% to ₹10L, 30% above':ageCategory==='senior'?'nil to ₹3L, 5% to ₹5L, 20% to ₹10L, 30% above':'nil to ₹2.5L, 5% to ₹5L, 20% to ₹10L, 30% above'}. Non-residents use the below-60 slabs regardless of age. Section 87A rebate (taxable ≤ ₹5L) applies only to resident individuals. 4% cess added on top. 80C/80D and other deductions aren\u2019t included — subtract them from gross income yourself before entering it.`;
+  }
+
+  document.getElementById('taxTaxable').textContent = inr(taxable);
+  const cess = tax*0.04;
+  const total = tax+cess;
+  document.getElementById('taxTotal').textContent = inr(total);
+  const effRate = gross>0 ? (total/gross)*100 : 0;
+  document.getElementById('taxEffective').textContent = pct(effRate,2);
+  document.getElementById('taxTakehome').textContent = inr((gross-total)/12);
+
+  drawChart('taxChart', ['Gross income','Take-home','Tax + cess'], [{
+    data:[gross, gross-total, total], backgroundColor:['#4B5A50','#1F6F50','#A2452F']
+  }], {plugins:{legend:{display:false}}}, 'bar');
+}
+bindField('taxIncome','taxIncomeRange', calcTax);
+bindField('taxAge','taxAgeRange', calcTax);
+document.getElementById('taxPayerType').addEventListener('input', calcTax);
+document.getElementById('taxResident').addEventListener('input', calcTax);
+document.querySelectorAll('input[name=taxRegime]').forEach(el=>el.addEventListener('input', calcTax));
+document.getElementById('taxStdDed').addEventListener('input', calcTax);
+calcTax();
+
+// ---------- PPF ----------
+function calcPPF(){
+  const deposit = +document.getElementById('ppfDeposit').value;
+  document.getElementById('ppfDepositLabel').textContent = inr(deposit);
+  const rate = +document.getElementById('ppfRate').value;
+  document.getElementById('ppfRateLabel').textContent = rate.toFixed(1)+'%';
+  const years = +document.getElementById('ppfYears').value;
+  document.getElementById('ppfYearsLabel').textContent = years+' yr';
+  const infl = +document.getElementById('ppfInfl').value;
+  document.getElementById('ppfInflLabel').textContent = infl.toFixed(1)+'%';
+
+  let balance=0, deposited=0;
+  const labels=['Yr 0'], data=[0];
+  for(let y=1;y<=years;y++){
+    balance += deposit; deposited += deposit;
+    balance *= (1+rate/100);
+    labels.push('Yr '+y); data.push(balance);
+  }
+  document.getElementById('ppfMaturity').textContent = inr(balance);
+  document.getElementById('ppfDeposited').textContent = inr(deposited);
+  document.getElementById('ppfReal').textContent = inr(balance / Math.pow(1+infl/100, years));
+  drawChart('ppfChart', labels, [{label:'Balance', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('ppfDeposit','ppfDepositRange', calcPPF);
+bindField('ppfRate','ppfRateRange', calcPPF);
+bindField('ppfYears','ppfYearsRange', calcPPF);
+bindField('ppfInfl','ppfInflRange', calcPPF);
+calcPPF();
+
+// ---------- EPF ----------
+function calcEPF(){
+  const salary0 = +document.getElementById('epfSalary').value;
+  document.getElementById('epfSalaryLabel').textContent = inr(salary0);
+  const age = +document.getElementById('epfAge').value;
+  document.getElementById('epfAgeLabel').textContent = age+' yr';
+  const retireAge = +document.getElementById('epfRetire').value;
+  document.getElementById('epfRetireLabel').textContent = retireAge+' yr';
+  const startBal = +document.getElementById('epfBal').value;
+  document.getElementById('epfBalLabel').textContent = inr(startBal);
+  const step = +document.getElementById('epfStep').value;
+  document.getElementById('epfStepLabel').textContent = step+'%';
+  const infl = +document.getElementById('epfInfl').value;
+  document.getElementById('epfInflLabel').textContent = infl.toFixed(1)+'%';
+
+  const years = Math.max(0, retireAge-age);
+  const rate = 8.25;
+  const r = rate/1200;
+  const eePct=12, erPct=3.67;
+
+  let balance = startBal, salary = salary0, contributed = 0;
+  const labels=['Yr 0'], data=[balance];
+  for(let y=1;y<=years;y++){
+    const monthlyContribution = salary*(eePct+erPct)/100;
+    for(let mo=1;mo<=12;mo++){ balance += monthlyContribution; balance *= (1+r); contributed += monthlyContribution; }
+    salary *= (1+step/100);
+    labels.push('Yr '+y); data.push(balance);
+  }
+  document.getElementById('epfMaturity').textContent = inr(balance);
+  document.getElementById('epfContributed').textContent = inr(contributed);
+  document.getElementById('epfReal').textContent = inr(balance / Math.pow(1+infl/100, years));
+  drawChart('epfChart', labels, [{label:'Balance', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('epfSalary','epfSalaryRange', calcEPF);
+bindField('epfAge','epfAgeRange', calcEPF);
+bindField('epfRetire','epfRetireRange', calcEPF);
+bindField('epfBal','epfBalRange', calcEPF);
+bindField('epfStep','epfStepRange', calcEPF);
+bindField('epfInfl','epfInflRange', calcEPF);
+calcEPF();
+
+// ---------- EMI ----------
+function calcEMI(){
+  const p = +document.getElementById('emiAmt').value;
+  document.getElementById('emiAmtLabel').textContent = inr(p);
+  const rate = +document.getElementById('emiRate').value;
+  document.getElementById('emiRateLabel').textContent = rate.toFixed(1)+'%';
+  const months = +document.getElementById('emiMonths').value;
+  document.getElementById('emiMonthsLabel').textContent = months+' mo';
+
+  const r = rate/1200;
+  let emi;
+  if(r>0) emi = p*r*Math.pow(1+r,months) / (Math.pow(1+r,months)-1);
+  else emi = p/months;
+  const totalPaid = emi*months;
+  document.getElementById('emiValue').textContent = inr(emi);
+  document.getElementById('emiInterest').textContent = inr(totalPaid-p);
+
+  let balance=p;
+  const labels=['Mo 0'], data=[balance];
+  const step = Math.max(1, Math.round(months/24));
+  for(let m=1;m<=months;m++){
+    const interest = balance*r;
+    balance = balance + interest - emi;
+    if(balance<0.5) balance=0;
+    if(m%step===0 || m===months){ labels.push('Mo '+m); data.push(Math.max(balance,0)); }
+  }
+  drawChart('emiChart', labels, [{label:'Outstanding balance', data, borderColor:'#1F6F50', backgroundColor:'rgba(31,111,80,0.08)', fill:true}]);
+}
+bindField('emiAmt','emiAmtRange', calcEMI);
+bindField('emiRate','emiRateRange', calcEMI);
+bindField('emiMonths','emiMonthsRange', calcEMI);
+calcEMI();
+
+</script>
+
+</body>
+</html>
