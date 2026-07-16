@@ -191,6 +191,7 @@
   .hc-stats .h-gain{color:var(--green-deep);}
   .hc-stats .h-gain.loss{color:var(--brick);}
   .h-realized{font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;}
+  .h-note{font-size:12.5px;color:var(--ink-soft);font-style:italic;margin:-4px 0 10px;}
   .h-actions{display:flex;gap:6px;flex-wrap:wrap;}
   .h-actions button{
     background:none;border:1px solid var(--rule);padding:5px 10px;cursor:pointer;font-size:12px;color:var(--ink-soft);
@@ -375,6 +376,11 @@
             <optgroup label="International">
               <option value="usstock">US Stocks</option>
             </optgroup>
+            <optgroup label="Other Assets">
+              <option value="realestate">Real Estate</option>
+              <option value="vehicle">Vehicle</option>
+              <option value="other">Other</option>
+            </optgroup>
           </select>
         </div>
         <div>
@@ -400,6 +406,10 @@
         <div>
           <label>Ticker / Coin ID <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
           <input type="text" id="holdingTicker" placeholder="AAPL, RELIANCE.NS, BTC-USD" maxlength="40">
+        </div>
+        <div>
+          <label>Note <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <input type="text" id="holdingNote" placeholder="e.g. 2BHK in Pune, bought for the family" maxlength="140">
         </div>
         <div>
           <button class="btn-primary" id="addHolding" style="padding:9px 16px;">+ Add</button>
@@ -443,13 +453,6 @@
       <div id="categoryBreakdownTable" style="margin-top:16px;"></div>
     </div>
     <div class="chart-col">
-      <div class="nw-subhead">Other assets</div>
-      <div class="field-2col" style="margin-bottom:22px;">
-        <div class="field"><label>Real estate</label><input type="number" id="nwRealEstate" min="0" step="1000" value="0"></div>
-        <div class="field"><label>Vehicles</label><input type="number" id="nwVehicles" min="0" step="1000" value="0"></div>
-      </div>
-      <div class="field" style="margin-bottom:22px;"><label>Other assets</label><input type="number" id="nwOtherAsset" min="0" step="1000" value="0"></div>
-
       <div class="nw-subhead">Liabilities</div>
       <div class="field-2col">
         <div class="field"><label>Home loan</label><input type="number" id="nwHomeLoan" min="0" step="1000" value="0"></div>
@@ -463,7 +466,6 @@
 
   <div class="summary-grid" style="margin-bottom:44px;">
     <div class="summary-card"><div class="label">Investment value</div><div class="value" id="nwInvestValue">0</div></div>
-    <div class="summary-card"><div class="label">Other assets</div><div class="value" id="nwOtherAssetsTotal">0</div></div>
     <div class="summary-card"><div class="label">Liabilities</div><div class="value brick" id="nwLiabTotal">0</div></div>
     <div class="summary-card"><div class="label">Net worth</div><div class="value" id="nwGrandTotal" style="font-size:1.7rem;">0</div></div>
   </div>
