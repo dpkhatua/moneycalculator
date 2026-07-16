@@ -686,18 +686,71 @@ function renderNWTotals(){
   return totalCurrent;
 }
 
-function renderHoldingsChart(){
+const ASSET_CLASS_PALETTE = ['#1F6F50','#C98A2C','#A2452F','#4B5A50','#7a9e8f','#d9b06b','#c47a68','#8fa89d','#3d6b8a','#6b5b95','#88a09e'];
+
+function computeCategoryBreakdown(){
   const holdings = getNW().holdings;
   const byClass = {};
-  holdings.forEach(h=>{ byClass[h.assetClass] = (byClass[h.assetClass]||0) + holdingCurrentValue(h); });
-  const labels = Object.keys(byClass).map(k=>ASSET_CLASS_LABELS[k]||k);
-  const data = Object.values(byClass);
-  const palette = ['#1F6F50','#C98A2C','#A2452F','#4B5A50','#7a9e8f','#d9b06b','#c47a68','#8fa89d','#3d6b8a','#6b5b95','#88a09e'];
-  if(labels.length===0 || data.every(v=>v<=0)){
+  holdings.forEach(h=>{
+    if(!byClass[h.assetClass]) byClass[h.assetClass] = { invested:0, current:0 };
+    byClass[h.assetClass].invested += holdingInvested(h);
+    byClass[h.assetClass].current += holdingCurrentValue(h);
+  });
+  return Object.keys(byClass)
+    .map(assetClass=>({ assetClass, label: ASSET_CLASS_LABELS[assetClass]||assetClass, ...byClass[assetClass] }))
+    .sort((a,b)=>b.current-a.current);
+}
+
+function renderHoldingsChart(){
+  const rows = computeCategoryBreakdown();
+  if(rows.length===0 || rows.every(r=>r.current<=0)){
     drawChart('holdingsChart', ['No holdings'], [{data:[1], backgroundColor:['#c7cdb9']}], {plugins:{legend:{display:false}}}, 'doughnut');
     return;
   }
-  drawChart('holdingsChart', labels, [{ data, backgroundColor: labels.map((_,i)=>palette[i%palette.length]) }], {}, 'doughnut');
+  const labels = rows.map(r=>r.label);
+  const data = rows.map(r=>r.current);
+  drawChart('holdingsChart', labels, [{ data, backgroundColor: labels.map((_,i)=>ASSET_CLASS_PALETTE[i%ASSET_CLASS_PALETTE.length]) }], {}, 'doughnut');
+}
+
+function renderCategoryBreakdownTable(){
+  const wrap = document.getElementById('categoryBreakdownTable');
+  const rows = computeCategoryBreakdown();
+  if(rows.length===0){
+    wrap.innerHTML = '';
+    return;
+  }
+  const totalInvested = rows.reduce((s,r)=>s+r.invested,0);
+  const totalCurrent = rows.reduce((s,r)=>s+r.current,0);
+  const totalGain = totalCurrent - totalInvested;
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Category</th><th style="text-align:right;">Invested</th><th style="text-align:right;">Current value</th><th style="text-align:right;">Gain/Loss</th></tr></thead>
+      <tbody>
+  `;
+  rows.forEach((r,i)=>{
+    const gain = r.current - r.invested;
+    const gainPct = r.invested>0 ? (gain/r.invested)*100 : 0;
+    html += `
+      <tr>
+        <td><span class="swatch" style="background:${ASSET_CLASS_PALETTE[i%ASSET_CLASS_PALETTE.length]};"></span>${escapeHtml(r.label)}</td>
+        <td class="num">${fmtAmount(r.invested)}</td>
+        <td class="num">${fmtAmount(r.current)}</td>
+        <td class="num ${gain<0?'loss':'gain'}">${gain>=0?'+':''}${fmtAmount(gain)} (${gainPct.toFixed(1)}%)</td>
+      </tr>
+    `;
+  });
+  const totalGainPct = totalInvested>0 ? (totalGain/totalInvested)*100 : 0;
+  html += `
+      <tr class="total-row">
+        <td>Total</td>
+        <td class="num">${fmtAmount(totalInvested)}</td>
+        <td class="num">${fmtAmount(totalCurrent)}</td>
+        <td class="num ${totalGain<0?'loss':'gain'}">${totalGain>=0?'+':''}${fmtAmount(totalGain)} (${totalGainPct.toFixed(1)}%)</td>
+      </tr>
+    </tbody></table>
+  `;
+  wrap.innerHTML = html;
 }
 
 function bindFlatNWField(id, group, key){
@@ -745,6 +798,7 @@ function renderNetWorth(){
   renderHoldingsList();
   const investmentValue = renderNWTotals();
   renderHoldingsChart();
+  renderCategoryBreakdownTable();
   renderNWSummary(investmentValue);
 }
 
