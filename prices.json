@@ -44,11 +44,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64027.7109,
+    "price": 63786.0391,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1870.37,
+    "price": 1861.64,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -112,7 +112,7 @@
     "currency": "INR"
   },
   "BHEL.NS": {
-    "price": 435.4,
+    "price": 434.0,
     "currency": "INR"
   },
   "BPCL.NS": {
@@ -176,7 +176,7 @@
     "currency": "INR"
   },
   "HCLTECH.NS": {
-    "price": 1187.4,
+    "price": 1175.4,
     "currency": "INR"
   },
   "HDFCBANK.NS": {
@@ -248,11 +248,11 @@
     "currency": "INR"
   },
   "JUBLFOOD.NS": {
-    "price": 423.15,
+    "price": 421.95,
     "currency": "INR"
   },
   "KOTAKBANK.NS": {
-    "price": 377.15,
+    "price": 376.5,
     "currency": "INR"
   },
   "LT.NS": {
@@ -383,5 +383,5 @@
     "price": 177.74,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-16T22:46:20.325269+00:00"
+  "updatedAt": "2026-07-16T23:46:53.083162+00:00"
 }
