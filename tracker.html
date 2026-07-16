@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spending Tracker — The Compound Ledger</title>
+<meta name="description" content="A private, offline spending tracker. Your data stays on this device.">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; base-uri 'self'; form-action 'self'; object-src 'none';">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F6F50">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Spending Tracker">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<script src="chart.min.js"></script>
+<style>
+  :root{
+    --paper:#EAEFE6;
+    --paper-raised:#F5F7F0;
+    --ink:#1B2A22;
+    --ink-soft:#4B5A50;
+    --rule:#c7cdb9;
+    --green:#1F6F50;
+    --green-deep:#153F30;
+    --mustard:#C98A2C;
+    --brick:#A2452F;
+    --shadow: 0 1px 0 rgba(27,42,34,0.06);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--paper),var(--paper)),
+      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(27,42,34,0.05) 28px),
+      repeating-linear-gradient(90deg, transparent, transparent 27px, rgba(27,42,34,0.035) 28px);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;} }
+  a{color:inherit;}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px;}
+
+  header.hero{ padding:48px 0 32px; border-bottom:1px solid var(--rule); }
+  .masthead{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    margin-bottom:36px;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;
+    letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-soft);
+  }
+  .masthead .mark{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:600;}
+  .mark .dot{width:9px;height:9px;border-radius:50%;background:var(--green);display:inline-block;}
+  .masthead a.back{color:var(--ink-soft);text-decoration:none;border-bottom:1px dashed var(--rule);}
+  .masthead a.back:hover{color:var(--ink);border-color:var(--ink-soft);}
+  .hero h1{
+    font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-optical-sizing:auto;font-weight:600;
+    font-size:clamp(2rem,4.6vw,3.4rem);line-height:1.05;margin:0 0 14px;letter-spacing:-0.01em;
+  }
+  .hero h1 em{font-style:italic;color:var(--green);}
+  .hero p.sub{max-width:600px;font-size:16px;line-height:1.55;color:var(--ink-soft);margin:0;}
+  .privacy-note{
+    display:flex;gap:10px;align-items:flex-start;margin-top:22px;padding:14px 16px;
+    background:var(--paper-raised);border:1px solid var(--rule);border-left:3px solid var(--mustard);
+    font-size:13.5px;line-height:1.5;color:var(--ink-soft);max-width:680px;
+  }
+  .privacy-note b{color:var(--ink);}
+
+  .currency-toggle{display:flex;gap:10px;margin-bottom:24px;}
+  .currency-toggle button{
+    flex:1;padding:14px 16px;border:1px solid var(--rule);background:var(--paper-raised);cursor:pointer;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;font-weight:600;
+    letter-spacing:0.02em;color:var(--ink-soft);text-align:left;
+  }
+  .currency-toggle button .big{display:block;font-size:16px;margin-top:2px;color:var(--ink);}
+  .currency-toggle button.active{border-color:var(--green);background:#fff;box-shadow:inset 0 0 0 1px var(--green);}
+  .currency-toggle button.active .big{color:var(--green-deep);}
+
+  main{padding:36px 0 80px;}
+
+  /* Summary cards */
+  .summary-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+    border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:36px;
+  }
+  @media (max-width:800px){ .summary-grid{grid-template-columns:repeat(2,1fr);} }
+  .summary-card{padding:22px 20px;border-right:1px solid var(--rule);}
+  .summary-card:last-child{border-right:none;}
+  @media (max-width:800px){ .summary-card:nth-child(2){border-right:none;} .summary-card:nth-child(odd){border-right:1px solid var(--rule);} }
+  .summary-card .label{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;}
+  .summary-card .value{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;font-size:1.5rem;color:var(--green-deep);}
+  .summary-card .value.brick{color:var(--brick);}
+
+  /* Section headers */
+  .section-head{display:flex;align-items:baseline;gap:16px;margin:0 0 6px;flex-wrap:wrap;justify-content:space-between;}
+  .section-head h2{font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-weight:600;font-size:1.5rem;margin:0;}
+  .section-desc{color:var(--ink-soft);font-size:14px;margin:6px 0 20px;}
+
+  /* Form */
+  .tracker-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:0;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:44px;}
+  @media (max-width:820px){ .tracker-grid{grid-template-columns:1fr;} }
+  .form-col{padding:28px;border-right:1px solid var(--rule);}
+  @media (max-width:820px){ .form-col{border-right:none;border-bottom:1px solid var(--rule);} }
+  .list-col{padding:28px;display:flex;flex-direction:column;}
+
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:6px;font-weight:500;}
+  .field input, .field select{
+    width:100%;padding:10px 12px;border:1px solid var(--rule);background:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:var(--ink);
+  }
+  .field input[type=number]{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;}
+  .type-toggle{display:flex;gap:8px;margin-bottom:16px;}
+  .type-toggle button{
+    flex:1;padding:10px;border:1px solid var(--rule);background:#fff;cursor:pointer;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;
+    color:var(--ink-soft);
+  }
+  .type-toggle button.active[data-type="expense"]{background:var(--brick);color:#fff;border-color:var(--brick);}
+  .type-toggle button.active[data-type="income"]{background:var(--green);color:#fff;border-color:var(--green);}
+  .btn-primary{
+    width:100%;padding:12px;border:none;background:var(--green-deep);color:#fff;cursor:pointer;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;
+  }
+  .btn-primary:hover{background:var(--green);}
+  .btn-secondary{
+    padding:9px 14px;border:1px solid var(--rule);background:#fff;color:var(--ink);cursor:pointer;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;font-weight:600;letter-spacing:0.02em;
+  }
+  .btn-secondary:hover{background:var(--paper);}
+  .form-note{font-size:12px;color:var(--ink-soft);margin-top:14px;line-height:1.5;}
+
+  /* Filter bar */
+  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;}
+  .filter-bar select, .filter-bar input{
+    padding:8px 10px;border:1px solid var(--rule);background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:var(--ink);
+  }
+  .filter-bar .spacer{flex:1;}
+
+  /* Transaction list */
+  .tx-list{flex:1;overflow-y:auto;max-height:520px;border-top:1px solid var(--rule);}
+  .tx-row{
+    display:grid;grid-template-columns:80px 1fr auto auto;gap:10px;align-items:center;
+    padding:11px 4px;border-bottom:1px solid var(--rule);font-size:13.5px;
+  }
+  .tx-row .tx-date{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11.5px;color:var(--ink-soft);}
+  .tx-row .tx-main{min-width:0;}
+  .tx-row .tx-cat{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10.5px;letter-spacing:0.03em;text-transform:uppercase;color:var(--mustard);display:block;margin-bottom:2px;}
+  .tx-row .tx-desc{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tx-row .tx-amt{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;white-space:nowrap;}
+  .tx-row .tx-amt.income{color:var(--green-deep);}
+  .tx-row .tx-amt.expense{color:var(--brick);}
+  .tx-row .tx-actions{display:flex;gap:4px;}
+  .tx-row .tx-actions button{
+    background:none;border:1px solid var(--rule);width:26px;height:26px;cursor:pointer;font-size:12px;color:var(--ink-soft);
+  }
+  .tx-row .tx-actions button:hover{background:var(--paper);color:var(--ink);}
+  .empty-state{padding:40px 4px;text-align:center;color:var(--ink-soft);font-size:14px;}
+
+  /* Charts section */
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:44px;}
+  @media (max-width:820px){ .charts-grid{grid-template-columns:1fr;} }
+  .chart-col{padding:28px;border-right:1px solid var(--rule);}
+  @media (max-width:820px){ .chart-col{border-right:none;border-bottom:1px solid var(--rule);} }
+  .chart-col h3{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 16px;}
+  .chart-wrap{height:240px;}
+
+  /* Data management */
+  .data-actions{display:flex;gap:10px;flex-wrap:wrap;padding:24px 28px;border:1px solid var(--rule);background:var(--paper-raised);}
+  .data-actions .danger{border-color:var(--brick);color:var(--brick);}
+  .data-actions .danger:hover{background:rgba(162,69,47,0.06);}
+
+  .drive-box{padding:24px 28px;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:20px;}
+  .drive-box .setup-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+  .drive-box input[type=text]{
+    flex:1;min-width:220px;padding:9px 11px;border:1px solid var(--rule);background:#fff;
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;color:var(--ink);
+  }
+  .drive-status{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;color:var(--ink-soft);margin:12px 0;}
+  .drive-status.connected{color:var(--green-deep);}
+  details.drive-setup{margin-bottom:16px;font-size:13.5px;color:var(--ink-soft);}
+  details.drive-setup summary{cursor:pointer;color:var(--ink);font-weight:500;margin-bottom:8px;}
+  details.drive-setup ol{margin:10px 0 0;padding-left:20px;line-height:1.7;}
+  details.drive-setup code{background:#fff;border:1px solid var(--rule);padding:1px 5px;font-size:12px;}
+
+  footer{border-top:1px solid var(--rule);padding:28px 0 60px;margin-top:44px;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;color:var(--ink-soft);}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="masthead">
+      <div class="mark"><span class="dot"></span> Money Calculator for Indians made with Love ❤️</div>
+      <a class="back" href="index.html">← Back to calculators</a>
+    </div>
+    <h1>Track every rupee, <em>quietly</em>.</h1>
+    <p class="sub">Log what comes in and what goes out. No account, no server — everything is written straight to this browser's storage on this device.</p>
+    <div class="privacy-note">
+      <span>🔒</span>
+      <span><b>Your data never leaves this device.</b> It's saved in this browser's local storage, so it won't appear on another phone, laptop, or browser automatically. Use <b>Export backup</b> below to save a copy, and <b>Import backup</b> to bring it into another device or browser.</span>
+    </div>
+    <div class="privacy-note">
+      <span>📲</span>
+      <span><b>Add this to your home screen for the smoothest mobile experience.</b> It'll open full-screen like an app and keeps working without signal once loaded. <b>iPhone (Safari):</b> tap Share → Add to Home Screen. <b>Android (Chrome):</b> tap ⋮ → Add to Home screen / Install app.</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- Summary -->
+  <div class="currency-toggle">
+    <button type="button" id="currencyUSA">🇺🇸 USA<span class="big">USD — $</span></button>
+    <button type="button" id="currencyIndia">🇮🇳 India<span class="big">INR — ₹</span></button>
+  </div>
+  <div id="backupReminder" style="display:none;margin-bottom:20px;padding:12px 16px;background:#fdf3e7;border:1px solid var(--mustard);font-size:13.5px;color:var(--ink);">
+    ⏰ It's been a while since your last backup. <button class="btn-secondary" id="reminderExportBtn" style="margin-left:8px;">Export backup now</button>
+    <button class="btn-secondary" id="reminderDismiss" style="margin-left:6px;">Dismiss</button>
+  </div>
+  <p class="section-desc" style="margin-top:-8px;">Everything below — summary, transactions, and charts — shows only the currency selected above. Switching never mixes USD and INR totals together.</p>
+  <div class="summary-grid">
+    <div class="summary-card"><div class="label">This month — income</div><div class="value" id="sumMonthIncome">₹0</div></div>
+    <div class="summary-card"><div class="label">This month — expenses</div><div class="value brick" id="sumMonthExpense">₹0</div></div>
+    <div class="summary-card"><div class="label">This month — net</div><div class="value" id="sumMonthNet">₹0</div></div>
+    <div class="summary-card"><div class="label">All-time balance</div><div class="value" id="sumAllBalance">₹0</div></div>
+  </div>
+
+  <!-- Add + list -->
+  <div class="section-head"><h2>Log &amp; transactions</h2></div>
+  <p class="section-desc">Add a transaction on the left; everything you've logged shows up on the right, newest first.</p>
+  <div class="tracker-grid">
+    <div class="form-col">
+      <div class="type-toggle">
+        <button type="button" data-type="expense" class="active" id="typeExpenseBtn">Expense</button>
+        <button type="button" data-type="income" id="typeIncomeBtn">Income</button>
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="txDate">
+      </div>
+      <div class="field">
+        <label>Category</label>
+        <select id="txCategory"></select>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <input type="text" id="txDesc" placeholder="e.g. Groceries, Uber, Salary" maxlength="200">
+      </div>
+      <div class="field">
+        <label>Amount <span id="txAmountCurrency" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;color:var(--ink);">₹</span></label>
+        <input type="number" id="txAmount" min="0" step="1" placeholder="0">
+      </div>
+      <button class="btn-primary" id="txSubmit">Add transaction</button>
+      <div class="form-note" id="editNote"></div>
+    </div>
+    <div class="list-col">
+      <div class="filter-bar">
+        <select id="filterMonth"></select>
+        <select id="filterCategory"><option value="">All categories</option></select>
+        <span class="spacer"></span>
+        <span id="txCount" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;color:var(--ink-soft);"></span>
+      </div>
+      <div class="tx-list" id="txList"></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="section-head"><h2>Where it's going</h2></div>
+  <p class="section-desc">Based on whatever month is selected in the filter above.</p>
+  <div class="charts-grid">
+    <div class="chart-col">
+      <h3>Expenses by category</h3>
+      <div class="chart-wrap"><canvas id="categoryChart"></canvas></div>
+    </div>
+    <div class="chart-col">
+      <h3>Income vs. expenses, last 6 months</h3>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Data management -->
+  <div class="section-head"><h2>Your data</h2></div>
+  <p class="section-desc">Everything here is stored only in this browser. Back it up regularly, especially before clearing your browser data or switching devices.</p>
+
+  <div class="drive-box">
+    <details class="drive-setup">
+      <summary>☁️ Back up to Google Drive (optional, one-time setup)</summary>
+      <p>This saves an encrypted-in-transit copy of your data to a private file in <b>your own</b> Google Drive — only this app can read or write that file, and nothing is shared with anyone else, including us. It requires a free Google OAuth Client ID that only you control:</p>
+      <ol>
+        <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud Console → Credentials</a> and create a project (any name).</li>
+        <li>Enable the <b>Google Drive API</b> for that project (search for it under "APIs &amp; Services").</li>
+        <li>Configure the <b>OAuth consent screen</b> as "External", add your own Gmail address as a test user, and keep it in "Testing" mode — no Google review needed for personal use.</li>
+        <li>Create an <b>OAuth Client ID</b> of type "Web application". Under "Authorized JavaScript origins", add the exact URL this page is hosted at (e.g. <code>https://yourusername.github.io</code>).</li>
+        <li>Copy the Client ID (ends in <code>.apps.googleusercontent.com</code>) and paste it below.</li>
+      </ol>
+      <p>Nothing here is secret — a Client ID on its own can't access your data without you approving the sign-in popup each time.</p>
+      <p><b>Setting up a second device (phone, another browser)?</b> Skip retyping the Client ID — click <b>📋 Copy setup link</b> below once you've saved it here, then open that link on the other device. It'll auto-fill the Client ID for you; you'll still need to click Connect and approve the Google popup once on that device, since that's the actual permission step.</p>
+    </details>
+    <div class="setup-row">
+      <input type="text" id="googleClientIdInput" placeholder="Paste your Google OAuth Client ID here">
+      <button class="btn-secondary" id="saveClientId">Save</button>
+      <button class="btn-secondary" id="copySetupLink" title="Copy a link that auto-fills this Client ID on another device">📋 Copy setup link</button>
+    </div>
+    <div class="drive-status" id="driveStatus">Not connected</div>
+    <div class="setup-row">
+      <button class="btn-secondary" id="connectDrive">🔗 Connect Google Drive</button>
+      <button class="btn-secondary" id="backupToDrive">⬆ Backup to Drive</button>
+      <button class="btn-secondary" id="restoreFromDrive">⬇ Restore from Drive</button>
+      <button class="btn-secondary" id="disconnectDrive">Disconnect</button>
+    </div>
+  </div>
+
+  <div class="data-actions">
+    <button class="btn-secondary" id="exportJson">⬇ Export backup (.json)</button>
+    <button class="btn-secondary" id="exportCsv">⬇ Export as CSV</button>
+    <label class="btn-secondary" style="cursor:pointer;">⬆ Import backup
+      <input type="file" id="importFile" accept=".json" style="display:none;">
+    </label>
+    <button class="btn-secondary danger" id="clearAll">🗑 Clear all data</button>
+  </div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Built as a static page — your transactions are stored locally in this browser only and are never sent anywhere.
+    <div style="margin-top:10px;">&copy; 2026 Durga Prasad Khatua. All rights reserved.</div>
+  </div>
+</footer>
+
+<script src="tracker.js"></script>
+
+</body>
+</html>
