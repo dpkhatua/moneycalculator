@@ -1,0 +1,38 @@
+name: Update stock/crypto prices
+
+on:
+  schedule:
+    # Runs every hour, on the hour (UTC). Change this line to adjust —
+    # e.g. '0 */4 * * *' for every 4 hours, or '0 9-16 * * 1-5' for
+    # hourly during Indian market hours on weekdays only.
+    - cron: '0 * * * *'
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab anytime
+
+permissions:
+  contents: write   # needed so the workflow can commit prices.json back to the repo
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Fetch prices
+        run: python scripts/fetch_prices.py
+
+      - name: Commit prices.json if it changed
+        run: |
+          git config user.name "price-bot"
+          git config user.email "actions@github.com"
+          git add prices.json
+          git diff --cached --quiet || git commit -m "Update prices [automated]"
+          git push
