@@ -1,54 +1,54 @@
 {
   "AAPL": {
-    "price": 330.91,
+    "price": 334.12,
     "currency": "USD"
   },
   "MSFT": {
-    "price": 394.97,
+    "price": 394.8,
     "currency": "USD"
   },
   "NVDA": {
-    "price": 204.92,
+    "price": 203.235,
     "currency": "USD"
   },
   "AVGO": {
-    "price": 375.14,
+    "price": 372.93,
     "currency": "USD"
   },
   "RKLB": {
-    "price": 69.76,
+    "price": 68.4899,
     "currency": "USD"
   },
   "LUNR": {
-    "price": 13.8698,
+    "price": 13.655,
     "currency": "USD"
   },
   "PL": {
-    "price": 23.13,
+    "price": 22.81,
     "currency": "USD"
   },
   "RDW": {
-    "price": 8.68,
+    "price": 8.5524,
     "currency": "USD"
   },
   "BKSY": {
-    "price": 23.055,
+    "price": 22.55,
     "currency": "USD"
   },
   "ASTS": {
-    "price": 59.9478,
+    "price": 58.67,
     "currency": "USD"
   },
   "SPIR": {
-    "price": 12.32,
+    "price": 12.19,
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63997.2695,
+    "price": 64298.7109,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1841.96,
+    "price": 1845.9,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -383,5 +383,5 @@
     "price": 176.0,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-17T17:56:03.910666+00:00"
+  "updatedAt": "2026-07-17T18:51:57.676127+00:00"
 }
