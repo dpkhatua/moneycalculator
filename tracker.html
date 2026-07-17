@@ -175,6 +175,20 @@
   .holding-form input[type=number]{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;}
 
   .holding-list{display:flex;flex-direction:column;gap:10px;margin-bottom:8px;}
+
+  .cat-group{margin-bottom:10px;}
+  .cat-group-header{
+    display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;
+    background:var(--paper-raised);border:1px solid var(--rule);user-select:none;
+  }
+  .cat-group-header:hover{background:var(--paper);}
+  .cat-arrow{color:var(--mustard);font-size:11px;width:10px;}
+  .cat-group-name{font-weight:600;color:var(--ink);font-size:13.5px;}
+  .cat-group-meta{
+    margin-left:auto;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+    font-size:12px;color:var(--ink-soft);
+  }
+  .cat-group-body{display:flex;flex-direction:column;gap:10px;padding-top:10px;}
   .holding-card{
     border:1px solid var(--rule);background:#fff;padding:14px 16px;font-size:13.5px;
   }
