@@ -632,6 +632,82 @@ document.getElementById('refreshAllPrices').addEventListener('click', async ()=>
 });
 
 
+const CATEGORY_GROUPS = [
+  { name: 'Bank & Deposits', classes: ['savings','fd','rd'] },
+  { name: 'Retirement', classes: ['epf','ppf'] },
+  { name: 'Market Investments', classes: ['equity','mf','liquidmf'] },
+  { name: 'Alternative', classes: ['gold','crypto'] },
+  { name: 'International', classes: ['usstock'] },
+  { name: 'Other Assets', classes: ['realestate','vehicle','other'] }
+];
+// Which category groups are currently expanded — resets on page reload,
+// same as any collapsible section. Collapsed by default so you only open
+// up the category you actually want to check.
+let categoryExpandState = {};
+
+function toggleCategoryGroup(name){
+  categoryExpandState[name] = !categoryExpandState[name];
+  renderHoldingsList();
+}
+
+function buildHoldingCard(h, today){
+  const qty = holdingQuantity(h);
+  const invested = holdingInvested(h);
+  const avgPrice = holdingAvgPrice(h);
+  const currentValue = holdingCurrentValue(h);
+  const unrealized = currentValue - invested;
+  const unrealizedPct = invested>0 ? (unrealized/invested)*100 : 0;
+  const oldestDate = holdingOldestLotDate(h);
+  const daysHeld = oldestDate ? daysBetween(oldestDate, today) : null;
+  const realizedPL = holdingRealizedPL(h);
+  const sellCount = (h.sells||[]).length;
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="h-class">${escapeHtml(ASSET_CLASS_LABELS[h.assetClass]||h.assetClass)}</span>
+      <span class="h-name">${escapeHtml(h.name)}${qty<=0?' (fully sold)':''}</span>
+      <span class="h-meta">${h.ticker?escapeHtml(h.ticker)+' · ':''}${daysHeld!==null&&qty>0?'Held '+daysHeld+' day'+(daysHeld===1?'':'s'):''}</span>
+    </div>
+    ${h.note?`<div class="h-note">${escapeHtml(h.note)}</div>`:''}
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Units</span>${qty}</div>
+      <div class="h-figure"><span class="lbl">Avg buy</span>${qty>0?fmtAmount(avgPrice):'—'}</div>
+      <div class="h-figure"><span class="lbl">Current px</span>${fmtAmount(h.currentPrice)}</div>
+      <div class="h-figure"><span class="lbl">Invested</span>${fmtAmount(invested)}</div>
+      <div class="h-figure"><span class="lbl">Value</span>${fmtAmount(currentValue)}</div>
+      <div class="h-figure h-gain${unrealized<0?' loss':''}"><span class="lbl">Unrealized</span>${qty>0?(unrealized>=0?'+':'')+fmtAmount(unrealized)+' ('+unrealizedPct.toFixed(1)+'%)':'—'}</div>
+    </div>
+    ${realizedPL!==0?`<div class="h-realized ${realizedPL<0?'loss':''}" style="color:${realizedPL<0?'var(--brick)':'var(--green-deep)'};">Realized P&amp;L: ${realizedPL>=0?'+':''}${fmtAmount(realizedPL)} across ${sellCount} sale${sellCount===1?'':'s'}</div>`:''}
+    <div class="h-actions">
+      <button class="buy" data-action="buy">+ Buy</button>
+      <button class="sell" data-action="sell" ${qty<=0?'disabled':''}>− Sell</button>
+      <button data-action="mark">✎ Update value</button>
+      <button data-action="ticker">🔗 ${h.ticker?'Edit':'Set'} ticker</button>
+      ${h.ticker?'<button data-action="refresh">🔄 Refresh</button>':''}
+      <button data-action="note">📝 ${h.note?'Edit':'Add'} note</button>
+      <button data-action="log">☰ Log</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="log-${h.id}" style="display:none;">
+      ${h.lots.map(l=>`Holding: ${l.quantity} unit${l.quantity===1?'':'s'} bought at ${fmtAmount(l.price)} on ${l.date}`).join('<br>')}
+      ${(h.sells||[]).map(s=>`Sold ${s.quantity} unit${s.quantity===1?'':'s'} at ${fmtAmount(s.price)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}`).join('<br>')}
+    </div>
+  `;
+  card.querySelector('[data-action=buy]').addEventListener('click', ()=>buyHolding(h.id));
+  const sellBtn = card.querySelector('[data-action=sell]');
+  if(qty>0) sellBtn.addEventListener('click', ()=>sellHolding(h.id));
+  card.querySelector('[data-action=mark]').addEventListener('click', ()=>updateHoldingValue(h.id));
+  card.querySelector('[data-action=ticker]').addEventListener('click', ()=>setHoldingTicker(h.id));
+  const refreshBtn = card.querySelector('[data-action=refresh]');
+  if(refreshBtn) refreshBtn.addEventListener('click', ()=>refreshHoldingPrice(h.id));
+  card.querySelector('[data-action=note]').addEventListener('click', ()=>setHoldingNote(h.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>toggleHoldingLog(h.id));
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteHolding(h.id));
+  return card;
+}
+
 function renderHoldingsList(){
   const wrap = document.getElementById('holdingList');
   const holdings = getNW().holdings;
@@ -641,71 +717,35 @@ function renderHoldingsList(){
   }
   wrap.innerHTML = '';
   const today = todayLocalISO();
-  // Real Estate / Vehicle / Other aren't market-traded, so they sit at the
-  // bottom of the list, after everything else (sorted alphabetically among themselves).
-  const OTHER_ASSET_CLASSES = ['realestate','vehicle','other'];
-  const sorted = holdings.slice().sort((a,b)=>{
-    const aOther = OTHER_ASSET_CLASSES.includes(a.assetClass);
-    const bOther = OTHER_ASSET_CLASSES.includes(b.assetClass);
-    if(aOther !== bOther) return aOther ? 1 : -1;
-    return a.assetClass.localeCompare(b.assetClass);
-  });
-  sorted.forEach(h=>{
-    const qty = holdingQuantity(h);
-    const invested = holdingInvested(h);
-    const avgPrice = holdingAvgPrice(h);
-    const currentValue = holdingCurrentValue(h);
-    const unrealized = currentValue - invested;
-    const unrealizedPct = invested>0 ? (unrealized/invested)*100 : 0;
-    const oldestDate = holdingOldestLotDate(h);
-    const daysHeld = oldestDate ? daysBetween(oldestDate, today) : null;
-    const realizedPL = holdingRealizedPL(h);
-    const sellCount = (h.sells||[]).length;
 
-    const card = document.createElement('div');
-    card.className = 'holding-card';
-    card.innerHTML = `
-      <div class="hc-top">
-        <span class="h-class">${escapeHtml(ASSET_CLASS_LABELS[h.assetClass]||h.assetClass)}</span>
-        <span class="h-name">${escapeHtml(h.name)}${qty<=0?' (fully sold)':''}</span>
-        <span class="h-meta">${h.ticker?escapeHtml(h.ticker)+' · ':''}${daysHeld!==null&&qty>0?'Held '+daysHeld+' day'+(daysHeld===1?'':'s'):''}</span>
-      </div>
-      ${h.note?`<div class="h-note">${escapeHtml(h.note)}</div>`:''}
-      <div class="hc-stats">
-        <div class="h-figure"><span class="lbl">Units</span>${qty}</div>
-        <div class="h-figure"><span class="lbl">Avg buy</span>${qty>0?fmtAmount(avgPrice):'—'}</div>
-        <div class="h-figure"><span class="lbl">Current px</span>${fmtAmount(h.currentPrice)}</div>
-        <div class="h-figure"><span class="lbl">Invested</span>${fmtAmount(invested)}</div>
-        <div class="h-figure"><span class="lbl">Value</span>${fmtAmount(currentValue)}</div>
-        <div class="h-figure h-gain${unrealized<0?' loss':''}"><span class="lbl">Unrealized</span>${qty>0?(unrealized>=0?'+':'')+fmtAmount(unrealized)+' ('+unrealizedPct.toFixed(1)+'%)':'—'}</div>
-      </div>
-      ${realizedPL!==0?`<div class="h-realized ${realizedPL<0?'loss':''}" style="color:${realizedPL<0?'var(--brick)':'var(--green-deep)'};">Realized P&amp;L: ${realizedPL>=0?'+':''}${fmtAmount(realizedPL)} across ${sellCount} sale${sellCount===1?'':'s'}</div>`:''}
-      <div class="h-actions">
-        <button class="buy" data-action="buy">+ Buy</button>
-        <button class="sell" data-action="sell" ${qty<=0?'disabled':''}>− Sell</button>
-        <button data-action="mark">✎ Update value</button>
-        <button data-action="ticker">🔗 ${h.ticker?'Edit':'Set'} ticker</button>
-        ${h.ticker?'<button data-action="refresh">🔄 Refresh</button>':''}
-        <button data-action="note">📝 ${h.note?'Edit':'Add'} note</button>
-        <button data-action="log">☰ Log</button>
-        <button data-action="del">× Delete</button>
-      </div>
-      <div class="h-log" id="log-${h.id}" style="display:none;">
-        ${h.lots.map(l=>`Holding: ${l.quantity} unit${l.quantity===1?'':'s'} bought at ${fmtAmount(l.price)} on ${l.date}`).join('<br>')}
-        ${(h.sells||[]).map(s=>`Sold ${s.quantity} unit${s.quantity===1?'':'s'} at ${fmtAmount(s.price)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}`).join('<br>')}
-      </div>
+  CATEGORY_GROUPS.forEach(group=>{
+    const groupHoldings = holdings.filter(h=>group.classes.includes(h.assetClass));
+    if(groupHoldings.length===0) return; // hide empty categories entirely
+
+    const subtotal = groupHoldings.reduce((s,h)=>s+holdingCurrentValue(h),0);
+    const expanded = !!categoryExpandState[group.name];
+
+    const section = document.createElement('div');
+    section.className = 'cat-group';
+    const header = document.createElement('div');
+    header.className = 'cat-group-header';
+    header.innerHTML = `
+      <span class="cat-arrow">${expanded?'▾':'▸'}</span>
+      <span class="cat-group-name">${escapeHtml(group.name)}</span>
+      <span class="cat-group-meta">${groupHoldings.length} holding${groupHoldings.length===1?'':'s'} · ${fmtAmount(subtotal)}</span>
     `;
-    card.querySelector('[data-action=buy]').addEventListener('click', ()=>buyHolding(h.id));
-    const sellBtn = card.querySelector('[data-action=sell]');
-    if(qty>0) sellBtn.addEventListener('click', ()=>sellHolding(h.id));
-    card.querySelector('[data-action=mark]').addEventListener('click', ()=>updateHoldingValue(h.id));
-    card.querySelector('[data-action=ticker]').addEventListener('click', ()=>setHoldingTicker(h.id));
-    const refreshBtn = card.querySelector('[data-action=refresh]');
-    if(refreshBtn) refreshBtn.addEventListener('click', ()=>refreshHoldingPrice(h.id));
-    card.querySelector('[data-action=note]').addEventListener('click', ()=>setHoldingNote(h.id));
-    card.querySelector('[data-action=log]').addEventListener('click', ()=>toggleHoldingLog(h.id));
-    card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteHolding(h.id));
-    wrap.appendChild(card);
+    header.addEventListener('click', ()=>toggleCategoryGroup(group.name));
+    section.appendChild(header);
+
+    if(expanded){
+      const body = document.createElement('div');
+      body.className = 'cat-group-body';
+      groupHoldings
+        .sort((a,b)=>a.assetClass.localeCompare(b.assetClass))
+        .forEach(h=>body.appendChild(buildHoldingCard(h, today)));
+      section.appendChild(body);
+    }
+    wrap.appendChild(section);
   });
 }
 
