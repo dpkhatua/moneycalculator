@@ -569,6 +569,80 @@ function setHoldingNote(id){
   renderNetWorth();
 }
 
+function editHoldingInfo(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  const newName = prompt('Name:', h.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+
+  const validClasses = Object.keys(ASSET_CLASS_LABELS);
+  const classList = validClasses.map(c=>`${c} (${ASSET_CLASS_LABELS[c]})`).join(', ');
+  const newClass = prompt(`Asset type — enter one of:\n${classList}`, h.assetClass);
+  if(newClass===null) return;
+  const trimmedClass = newClass.trim();
+  if(trimmedClass && !validClasses.includes(trimmedClass)){
+    alert('Not a recognized asset type — nothing changed. Use one of the exact codes shown (e.g. "equity", "crypto").');
+    return;
+  }
+
+  h.name = newName.trim();
+  if(trimmedClass) h.assetClass = trimmedClass;
+  saveData();
+  renderNetWorth();
+}
+
+function editLot(holdingId, lotId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  const lot = h.lots.find(l=>l.id===lotId);
+  if(!lot) return;
+
+  const qtyRaw = prompt('Quantity/units for this buy:', lot.quantity);
+  if(qtyRaw===null) return;
+  const qty = +qtyRaw;
+  if(!qty || qty<=0){ alert('Enter a valid quantity.'); return; }
+
+  const priceRaw = prompt('Price per unit for this buy:', lot.price);
+  if(priceRaw===null) return;
+  const price = +priceRaw;
+  if(!price || price<=0){ alert('Enter a valid price.'); return; }
+
+  const dateRaw = prompt('Date (YYYY-MM-DD):', lot.date);
+  if(dateRaw===null) return;
+
+  lot.quantity = qty;
+  lot.price = price;
+  lot.date = dateRaw || lot.date;
+  saveData();
+  renderNetWorth();
+}
+
+function deleteLot(holdingId, lotId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  if(h.lots.length===1 && (!h.sells || h.sells.length===0)){
+    if(!confirm('This is the only buy on this holding — deleting it will remove the whole holding. Continue?')) return;
+    getNW().holdings = getNW().holdings.filter(x=>x.id!==holdingId);
+    saveData();
+    renderNetWorth();
+    return;
+  }
+  if(!confirm('Delete this buy entry?')) return;
+  h.lots = h.lots.filter(l=>l.id!==lotId);
+  saveData();
+  renderNetWorth();
+}
+
+function deleteSell(holdingId, sellId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  if(!confirm('Delete this sell record?\n\nNote: this removes it from your history and realized P&L, but doesn\'t automatically restore the sold units back into the holding — if you need those units back, use "+ Buy" to re-add them at the correct price.')) return;
+  h.sells = (h.sells||[]).filter(s=>s.id!==sellId);
+  saveData();
+  renderNetWorth();
+}
+
 // ---- Auto price fetch: a scheduled GitHub Action fetches prices (US stocks,
 // Indian NSE/BSE stocks, and crypto, all via one source) and publishes them
 // to prices.json in this repo. The browser just reads that file — nothing
@@ -683,21 +757,20 @@ function buildHoldingCard(h, today){
     <div class="h-actions">
       <button class="buy" data-action="buy">+ Buy</button>
       <button class="sell" data-action="sell" ${qty<=0?'disabled':''}>− Sell</button>
-      <button data-action="mark">✎ Update value</button>
+      <button data-action="edit">✎ Edit name/type</button>
+      <button data-action="mark">Update value</button>
       <button data-action="ticker">🔗 ${h.ticker?'Edit':'Set'} ticker</button>
       ${h.ticker?'<button data-action="refresh">🔄 Refresh</button>':''}
       <button data-action="note">📝 ${h.note?'Edit':'Add'} note</button>
       <button data-action="log">☰ Log</button>
       <button data-action="del">× Delete</button>
     </div>
-    <div class="h-log" id="log-${h.id}" style="display:none;">
-      ${h.lots.map(l=>`Holding: ${l.quantity} unit${l.quantity===1?'':'s'} bought at ${fmtAmount(l.price)} on ${l.date}`).join('<br>')}
-      ${(h.sells||[]).map(s=>`Sold ${s.quantity} unit${s.quantity===1?'':'s'} at ${fmtAmount(s.price)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}`).join('<br>')}
-    </div>
+    <div class="h-log" id="log-${h.id}" style="display:none;"></div>
   `;
   card.querySelector('[data-action=buy]').addEventListener('click', ()=>buyHolding(h.id));
   const sellBtn = card.querySelector('[data-action=sell]');
   if(qty>0) sellBtn.addEventListener('click', ()=>sellHolding(h.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editHoldingInfo(h.id));
   card.querySelector('[data-action=mark]').addEventListener('click', ()=>updateHoldingValue(h.id));
   card.querySelector('[data-action=ticker]').addEventListener('click', ()=>setHoldingTicker(h.id));
   const refreshBtn = card.querySelector('[data-action=refresh]');
@@ -705,6 +778,41 @@ function buildHoldingCard(h, today){
   card.querySelector('[data-action=note]').addEventListener('click', ()=>setHoldingNote(h.id));
   card.querySelector('[data-action=log]').addEventListener('click', ()=>toggleHoldingLog(h.id));
   card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteHolding(h.id));
+
+  // Build the buy/sell log with per-entry edit/delete controls (done as real
+  // DOM nodes, not string-joined text, so each entry can carry its own buttons).
+  const logEl = card.querySelector('.h-log');
+  h.lots.forEach(l=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎';
+    editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editLot(h.id, l.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×';
+    delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteLot(h.id, l.id));
+    row.appendChild(editBtn);
+    row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  (h.sells||[]).forEach(s=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Sold ${s.quantity} unit${s.quantity===1?'':'s'} at ${fmtAmount(s.price)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}</span>`;
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×';
+    delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteSell(h.id, s.id));
+    row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  if(h.lots.length===0 && (!h.sells || h.sells.length===0)){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No entries.</span>';
+  }
+
   return card;
 }
 
