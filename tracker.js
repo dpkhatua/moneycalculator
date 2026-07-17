@@ -762,7 +762,7 @@ function buildHoldingCard(h, today){
       <button data-action="ticker">🔗 ${h.ticker?'Edit':'Set'} ticker</button>
       ${h.ticker?'<button data-action="refresh">🔄 Refresh</button>':''}
       <button data-action="note">📝 ${h.note?'Edit':'Add'} note</button>
-      <button data-action="log">☰ Log</button>
+      <button data-action="log">☰ Edit buys/sells</button>
       <button data-action="del">× Delete</button>
     </div>
     <div class="h-log" id="log-${h.id}" style="display:none;"></div>
