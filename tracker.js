@@ -289,6 +289,8 @@ function renderSummary(){
 
   const allIncome = currencyTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const allExpense = currencyTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  document.getElementById('sumAllIncome').textContent = fmtAmount(allIncome);
+  document.getElementById('sumAllExpense').textContent = fmtAmount(allExpense);
   const balEl = document.getElementById('sumAllBalance');
   balEl.textContent = fmtAmount(allIncome-allExpense);
   balEl.classList.toggle('brick', allIncome-allExpense<0);
