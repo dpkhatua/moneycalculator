@@ -427,6 +427,13 @@ function sipMonthlyEquivalent(sip){
   if(sip.frequencyUnit==='days') return sip.amount * (30.44/sip.frequencyValue);
   return sip.amount / sip.frequencyValue;
 }
+function periodsPerYear(unit, value){ return unit==='days' ? 365/value : 12/value; }
+function sipPaidThisYear(sip){
+  const year = todayLocalISO().slice(0,4);
+  return sip.installments.filter(i=>i.date.slice(0,4)===year).reduce((s,i)=>s+i.amount,0);
+}
+function sipYearlyRequirement(sip){ return sip.amount * periodsPerYear(sip.frequencyUnit, sip.frequencyValue); }
+function sipNeededThisYear(sip){ return Math.max(0, sipYearlyRequirement(sip) - sipPaidThisYear(sip)); }
 
 // ---- Derived figures from a holding's lot history (all computed, nothing stored redundantly) ----
 function holdingQuantity(h){ return h.lots.reduce((s,l)=>s+l.quantity, 0); }
@@ -1413,6 +1420,9 @@ function deleteSip(id){
 function buildSipCard(sip){
   const invested = sipTotalInvested(sip);
   const isStopped = sip.status==='stopped';
+  const paidThisYear = sipPaidThisYear(sip);
+  const yearlyReq = sipYearlyRequirement(sip);
+  const neededThisYear = sipNeededThisYear(sip);
 
   const card = document.createElement('div');
   card.className = 'holding-card';
@@ -1425,8 +1435,12 @@ function buildSipCard(sip){
     <div class="hc-stats">
       <div class="h-figure"><span class="lbl">Amount / ${sipFrequencyLabel(sip)}</span>${fmtAmount(sip.amount)}</div>
       <div class="h-figure"><span class="lbl">Started</span>${sip.startDate}</div>
+      <div class="h-figure"><span class="lbl">Total paid upto</span>${fmtAmount(invested)}</div>
       <div class="h-figure"><span class="lbl">Installments</span>${sip.installments.length}</div>
-      <div class="h-figure"><span class="lbl">Total invested</span>${fmtAmount(invested)}</div>
+      <div class="h-figure"><span class="lbl">Paid this year</span>${fmtAmount(paidThisYear)}</div>
+      <div class="h-figure"><span class="lbl">Yearly requirement</span>${fmtAmount(yearlyReq)}</div>
+      <div class="h-figure"><span class="lbl">Monthly requirement</span>${fmtAmount(sipMonthlyEquivalent(sip))}</div>
+      <div class="h-figure h-gain${neededThisYear>0?' loss':''}"><span class="lbl">Needed this year</span>${fmtAmount(neededThisYear)}</div>
       ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${sip.nextDueDate}</div>`:''}
     </div>
     <div class="h-actions">
@@ -1486,6 +1500,9 @@ function renderSipsSummary(){
   document.getElementById('sipActiveCount').textContent = active.length;
   document.getElementById('sipMonthlyTotal').textContent = fmtAmount(active.reduce((s,x)=>s+sipMonthlyEquivalent(x),0));
   document.getElementById('sipTotalInvested').textContent = fmtAmount(sips.reduce((s,x)=>s+sipTotalInvested(x),0));
+  document.getElementById('sipPaidThisYear').textContent = fmtAmount(sips.reduce((s,x)=>s+sipPaidThisYear(x),0));
+  document.getElementById('sipYearlyReq').textContent = fmtAmount(active.reduce((s,x)=>s+sipYearlyRequirement(x),0));
+  document.getElementById('sipNeededThisYear').textContent = fmtAmount(active.reduce((s,x)=>s+sipNeededThisYear(x),0));
 }
 function renderSips(){
   syncSipInstallments();
@@ -1498,6 +1515,13 @@ function getInsurance(){ return getNW().insurance; }
 const INS_FREQ_LABEL = { 1:'Monthly', 3:'Quarterly', 6:'Half-yearly', 12:'Yearly' };
 
 function insuranceTotalPaid(ins){ return ins.payments.reduce((s,p)=>s+p.amount,0); }
+function insurancePaidThisYear(ins){
+  const year = todayLocalISO().slice(0,4);
+  return ins.payments.filter(p=>p.date.slice(0,4)===year).reduce((s,p)=>s+p.amount,0);
+}
+function insuranceYearlyRequirement(ins){ return ins.premiumAmount * (12/ins.frequencyMonths); }
+function insuranceMonthlyRequirement(ins){ return ins.premiumAmount / ins.frequencyMonths; }
+function insuranceNeededThisYear(ins){ return Math.max(0, insuranceYearlyRequirement(ins) - insurancePaidThisYear(ins)); }
 function insuranceStatusBadge(ins, today){
   if(ins.status==='lapsed') return 'stopped';
   const days = daysBetween(today, ins.nextDueDate);
@@ -1620,6 +1644,9 @@ function deleteInsurance(id){
 function buildInsuranceCard(ins, today){
   const totalPaid = insuranceTotalPaid(ins);
   const badge = insuranceStatusBadge(ins, today);
+  const paidThisYear = insurancePaidThisYear(ins);
+  const yearlyReq = insuranceYearlyRequirement(ins);
+  const neededThisYear = insuranceNeededThisYear(ins);
 
   const card = document.createElement('div');
   card.className = 'holding-card';
@@ -1633,7 +1660,11 @@ function buildInsuranceCard(ins, today){
       <div class="h-figure"><span class="lbl">Premium</span>${fmtAmount(ins.premiumAmount)} / ${INS_FREQ_LABEL[ins.frequencyMonths]||''}</div>
       <div class="h-figure"><span class="lbl">Bought</span>${ins.boughtDate}</div>
       <div class="h-figure"><span class="lbl">Next due</span>${ins.nextDueDate}</div>
-      <div class="h-figure"><span class="lbl">Total paid</span>${fmtAmount(totalPaid)}</div>
+      <div class="h-figure"><span class="lbl">Total paid upto</span>${fmtAmount(totalPaid)}</div>
+      <div class="h-figure"><span class="lbl">Paid this year</span>${fmtAmount(paidThisYear)}</div>
+      <div class="h-figure"><span class="lbl">Yearly requirement</span>${fmtAmount(yearlyReq)}</div>
+      <div class="h-figure"><span class="lbl">Monthly requirement</span>${fmtAmount(insuranceMonthlyRequirement(ins))}</div>
+      <div class="h-figure h-gain${neededThisYear>0?' loss':''}"><span class="lbl">Needed this year</span>${fmtAmount(neededThisYear)}</div>
     </div>
     <div class="h-actions">
       <button class="buy" data-action="pay">+ Pay premium</button>
@@ -1690,8 +1721,13 @@ function renderInsuranceList(){
 }
 function renderInsuranceSummary(){
   const insurance = getInsurance();
-  document.getElementById('insActiveCount').textContent = insurance.filter(i=>i.status!=='lapsed').length;
+  const active = insurance.filter(i=>i.status!=='lapsed');
+  document.getElementById('insActiveCount').textContent = active.length;
   document.getElementById('insTotalPaid').textContent = fmtAmount(insurance.reduce((s,i)=>s+insuranceTotalPaid(i),0));
+  document.getElementById('insPaidThisYear').textContent = fmtAmount(insurance.reduce((s,i)=>s+insurancePaidThisYear(i),0));
+  document.getElementById('insYearlyReq').textContent = fmtAmount(active.reduce((s,i)=>s+insuranceYearlyRequirement(i),0));
+  document.getElementById('insMonthlyReq').textContent = fmtAmount(active.reduce((s,i)=>s+insuranceMonthlyRequirement(i),0));
+  document.getElementById('insNeededThisYear').textContent = fmtAmount(active.reduce((s,i)=>s+insuranceNeededThisYear(i),0));
 }
 function renderInsurance(){
   renderInsuranceList();
