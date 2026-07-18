@@ -722,6 +722,58 @@
   <div class="holding-list" id="insuranceList" style="margin-bottom:44px;"></div>
   </div>
 
+  <!-- Recurring Expenses -->
+  <div class="section-head collapsible" id="recurringSectionHead"><h2><span class="section-arrow" id="recurringArrow">▾</span>Recurring expenses</h2></div>
+  <div id="recurringSectionBody">
+  <p class="section-desc">"Definite spending" — a fixed bill that repeats monthly or every N days. It logs itself automatically as a real expense in your transactions (and doubles as a reminder, showing what's due next) until you stop it.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a recurring expense</div>
+      <div class="holding-form">
+        <div>
+          <label>Name</label>
+          <input type="text" id="recurName" placeholder="e.g. Rent, Netflix, Gym" maxlength="80">
+        </div>
+        <div>
+          <label>Amount</label>
+          <input type="number" id="recurAmount" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Category</label>
+          <select id="recurCategory"></select>
+        </div>
+        <div>
+          <label>Frequency</label>
+          <select id="recurFrequencyType">
+            <option value="months">Monthly</option>
+            <option value="days">Every N days</option>
+          </select>
+        </div>
+        <div>
+          <label>N days <span style="font-weight:400;color:var(--ink-soft);">(if "Every N days")</span></label>
+          <input type="number" id="recurDaysN" min="1" step="1" placeholder="e.g. 15">
+        </div>
+        <div>
+          <label>Start date</label>
+          <input type="date" id="recurStartDate">
+        </div>
+        <div>
+          <button class="btn-primary" id="addRecurring" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Active</div><div class="val" id="recurActiveCount">0</div></div>
+    <div class="t"><div class="lbl">Monthly-equivalent total</div><div class="val" id="recurMonthlyTotal">0</div></div>
+    <div class="t"><div class="lbl">Total logged so far</div><div class="val" id="recurTotalLogged">0</div></div>
+  </div>
+
+  <div class="holding-list" id="recurringList" style="margin-bottom:44px;"></div>
+  </div>
+
   <!-- Data management -->
   <div class="section-head"><h2>Your data</h2></div>
   <p class="section-desc">Everything here is stored only in this browser. Back it up regularly, especially before clearing your browser data or switching devices.</p>
