@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64447.9414,
+    "price": 64445.5586,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1853.75,
+    "price": 1853.87,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -455,5 +455,49 @@
     "price": 433.1,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-18T18:43:51.181817+00:00"
+  "MID150CASE.NS": {
+    "price": 11.54,
+    "currency": "INR"
+  },
+  "MAFANG.NS": {
+    "price": 200.2,
+    "currency": "INR"
+  },
+  "NIFTYBEES.NS": {
+    "price": 276.46,
+    "currency": "INR"
+  },
+  "POLYCAB.NS": {
+    "price": 8862.0,
+    "currency": "INR"
+  },
+  "RVNL.NS": {
+    "price": 225.44,
+    "currency": "INR"
+  },
+  "SETFNN50.NS": {
+    "price": 769.57,
+    "currency": "INR"
+  },
+  "TMPV.NS": {
+    "price": 335.6,
+    "currency": "INR"
+  },
+  "TMCV.NS": {
+    "price": 414.65,
+    "currency": "INR"
+  },
+  "TRIDENT.NS": {
+    "price": 25.21,
+    "currency": "INR"
+  },
+  "YESBANK.NS": {
+    "price": 23.61,
+    "currency": "INR"
+  },
+  "ZENTEC.NS": {
+    "price": 1769.7,
+    "currency": "INR"
+  },
+  "updatedAt": "2026-07-18T18:45:25.909615+00:00"
 }
