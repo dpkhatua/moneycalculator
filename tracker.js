@@ -18,7 +18,9 @@ function emptyNetWorthBucket(){
   return {
     holdings: [],
     liabilities: { homeLoan:0, carLoan:0, ccDebt:0, personalLoan:0, otherLiability:0 },
-    lending: [] // money lent to people — intentionally never included in net worth totals
+    lending: [], // money lent to people — intentionally never included in net worth totals
+    sips: [],    // ongoing SIPs — installments auto-log on their due date
+    insurance: [] // ongoing insurance policies
   };
 }
 
@@ -395,6 +397,35 @@ function nwUid(){ return 'nw_' + Date.now() + '_' + Math.random().toString(36).s
 function daysBetween(dateStr1, dateStr2){
   const d1 = parseLocalDate(dateStr1), d2 = parseLocalDate(dateStr2);
   return Math.round((d2 - d1) / (1000*60*60*24));
+}
+
+// Adds n months to a YYYY-MM-DD date, clamping to the last day of the target
+// month if the original day doesn't exist there (e.g. Jan 31 + 1 month -> Feb 28).
+function addMonthsClamped(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const totalMonthIndex = (m-1) + n;
+  const targetYear = y + Math.floor(totalMonthIndex/12);
+  const targetMonth = ((totalMonthIndex%12)+12)%12; // 0-based
+  const lastDay = new Date(targetYear, targetMonth+1, 0).getDate();
+  const day = Math.min(d, lastDay);
+  return `${targetYear}-${String(targetMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+function addDays(dateStr, n){
+  const d = parseLocalDate(dateStr);
+  d.setDate(d.getDate()+n);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// Generic "advance by one period" for any frequency (weekly = days, monthly/quarterly = months).
+function advanceDate(dateStr, unit, value){
+  return unit==='days' ? addDays(dateStr, value) : addMonthsClamped(dateStr, value);
+}
+const SIP_FREQ_LABEL = { 'days:7':'Weekly', 'months:1':'Monthly', 'months:3':'Quarterly' };
+function sipFrequencyLabel(sip){ return SIP_FREQ_LABEL[`${sip.frequencyUnit}:${sip.frequencyValue}`] || `Every ${sip.frequencyValue} ${sip.frequencyUnit}`; }
+// Normalizes any frequency into a comparable monthly-equivalent figure, so
+// mixed weekly/monthly/quarterly SIPs can still be summed into one commitment total.
+function sipMonthlyEquivalent(sip){
+  if(sip.frequencyUnit==='days') return sip.amount * (30.44/sip.frequencyValue);
+  return sip.amount / sip.frequencyValue;
 }
 
 // ---- Derived figures from a holding's lot history (all computed, nothing stored redundantly) ----
@@ -1250,6 +1281,423 @@ function renderLending(){
   renderLendingSummary();
 }
 
+// ---------- SIPs (installments auto-log on their due date, monthly, until stopped) ----------
+function getSips(){ return getNW().sips; }
+
+function sipTotalInvested(sip){ return sip.installments.reduce((s,x)=>s+x.amount,0); }
+
+// Catches up any installments whose due date has passed since we last
+// checked — this is what makes it feel automatic: just opening the tracker
+// logs anything that came due, for every SIP still marked active.
+function syncSipInstallments(){
+  const today = todayLocalISO();
+  let changed = false;
+  getSips().forEach(sip=>{
+    // Migration: SIPs created before frequency support default to monthly.
+    if(!sip.frequencyUnit){ sip.frequencyUnit = 'months'; sip.frequencyValue = 1; }
+    if(sip.status!=='active') return;
+    let guard = 0;
+    while(sip.nextDueDate<=today && guard<600){
+      sip.installments.push({ id: nwUid(), date: sip.nextDueDate, amount: sip.amount });
+      sip.nextDueDate = advanceDate(sip.nextDueDate, sip.frequencyUnit, sip.frequencyValue);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+document.getElementById('addSip').addEventListener('click', ()=>{
+  const name = document.getElementById('sipName').value.trim();
+  const amount = +document.getElementById('sipAmount').value;
+  const startDate = document.getElementById('sipStartDate').value || todayLocalISO();
+  const linkedHolding = document.getElementById('sipLinkedHolding').value.trim();
+  const [frequencyUnit, freqValueRaw] = document.getElementById('sipFrequency').value.split(':');
+  const frequencyValue = +freqValueRaw;
+
+  if(!name){ alert('Give this SIP a name.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+
+  getSips().push({
+    id: nwUid(),
+    name,
+    amount,
+    startDate,
+    linkedHolding: linkedHolding || null,
+    frequencyUnit,
+    frequencyValue,
+    status: 'active',
+    stoppedDate: null,
+    nextDueDate: startDate,
+    installments: []
+  });
+  saveData();
+  document.getElementById('sipName').value = '';
+  document.getElementById('sipAmount').value = '';
+  document.getElementById('sipLinkedHolding').value = '';
+  document.getElementById('sipStartDate').value = todayLocalISO();
+  renderSips();
+});
+
+function stopSip(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  if(!confirm(`Stop "${sip.name}"? No more installments will be logged automatically after today.`)) return;
+  sip.status = 'stopped';
+  sip.stoppedDate = todayLocalISO();
+  saveData();
+  renderSips();
+}
+function resumeSip(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  sip.status = 'active';
+  sip.stoppedDate = null;
+  // Don't burst-generate installments for the whole paused period —
+  // resume fresh from today if the due date fell behind while stopped.
+  if(sip.nextDueDate < todayLocalISO()) sip.nextDueDate = todayLocalISO();
+  saveData();
+  renderSips();
+}
+function editSipInfo(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  const newName = prompt('SIP name:', sip.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newAmt = prompt(`Amount per ${sipFrequencyLabel(sip).toLowerCase()} installment (applies to future installments only):`, sip.amount);
+  if(newAmt===null) return;
+  const amt = +newAmt;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const newLinked = prompt('Linked to (optional):', sip.linkedHolding||'');
+  if(newLinked===null) return;
+  sip.name = newName.trim();
+  sip.amount = amt;
+  sip.linkedHolding = newLinked.trim() || null;
+  saveData();
+  renderSips();
+}
+function editInstallment(sipId, instId){
+  const sip = getSips().find(x=>x.id===sipId);
+  if(!sip) return;
+  const inst = sip.installments.find(i=>i.id===instId);
+  if(!inst) return;
+  const amtRaw = prompt('Amount:', inst.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', inst.date);
+  if(dateRaw===null) return;
+  inst.amount = amt;
+  inst.date = dateRaw || inst.date;
+  saveData();
+  renderSips();
+}
+function deleteInstallment(sipId, instId){
+  const sip = getSips().find(x=>x.id===sipId);
+  if(!sip) return;
+  if(!confirm('Delete this installment entry?')) return;
+  sip.installments = sip.installments.filter(i=>i.id!==instId);
+  saveData();
+  renderSips();
+}
+function deleteSip(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  if(!confirm(`Delete "${sip.name}" entirely, including its installment history? This can't be undone.`)) return;
+  getNW().sips = getSips().filter(x=>x.id!==id);
+  saveData();
+  renderSips();
+}
+
+function buildSipCard(sip){
+  const invested = sipTotalInvested(sip);
+  const isStopped = sip.status==='stopped';
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${isStopped?'stopped':'repaid'}">${isStopped?'Stopped':'Active'}</span>
+      <span class="h-name">${escapeHtml(sip.name)}</span>
+      <span class="h-meta">${sip.linkedHolding?'→ '+escapeHtml(sip.linkedHolding):''}</span>
+    </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Amount / ${sipFrequencyLabel(sip)}</span>${fmtAmount(sip.amount)}</div>
+      <div class="h-figure"><span class="lbl">Started</span>${sip.startDate}</div>
+      <div class="h-figure"><span class="lbl">Installments</span>${sip.installments.length}</div>
+      <div class="h-figure"><span class="lbl">Total invested</span>${fmtAmount(invested)}</div>
+      ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${sip.nextDueDate}</div>`:''}
+    </div>
+    <div class="h-actions">
+      ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop SIP</button>'}
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="log">☰ Installments</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="siplog-${sip.id}" style="display:none;"></div>
+  `;
+  const stopBtn = card.querySelector('[data-action=stop]');
+  if(stopBtn) stopBtn.addEventListener('click', ()=>stopSip(sip.id));
+  const resumeBtn = card.querySelector('[data-action=resume]');
+  if(resumeBtn) resumeBtn.addEventListener('click', ()=>resumeSip(sip.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editSipInfo(sip.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('siplog-'+sip.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteSip(sip.id));
+
+  const logEl = card.querySelector('.h-log');
+  if(sip.installments.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No installments logged yet.</span>';
+  }
+  sip.installments.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(inst=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Added ${fmtAmount(inst.amount)} on ${inst.date}${sip.linkedHolding?' → '+escapeHtml(sip.linkedHolding):''}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editInstallment(sip.id, inst.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteInstallment(sip.id, inst.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  return card;
+}
+
+function renderSipsList(){
+  const wrap = document.getElementById('sipList');
+  const sips = getSips();
+  if(sips.length===0){
+    wrap.innerHTML = '<div class="empty-state">No SIPs logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  sips.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(sip=>wrap.appendChild(buildSipCard(sip)));
+}
+function renderSipsSummary(){
+  const sips = getSips();
+  const active = sips.filter(s=>s.status==='active');
+  document.getElementById('sipActiveCount').textContent = active.length;
+  document.getElementById('sipMonthlyTotal').textContent = fmtAmount(active.reduce((s,x)=>s+sipMonthlyEquivalent(x),0));
+  document.getElementById('sipTotalInvested').textContent = fmtAmount(sips.reduce((s,x)=>s+sipTotalInvested(x),0));
+}
+function renderSips(){
+  syncSipInstallments();
+  renderSipsList();
+  renderSipsSummary();
+}
+
+// ---------- Insurance ----------
+function getInsurance(){ return getNW().insurance; }
+const INS_FREQ_LABEL = { 1:'Monthly', 3:'Quarterly', 6:'Half-yearly', 12:'Yearly' };
+
+function insuranceTotalPaid(ins){ return ins.payments.reduce((s,p)=>s+p.amount,0); }
+function insuranceStatusBadge(ins, today){
+  if(ins.status==='lapsed') return 'stopped';
+  const days = daysBetween(today, ins.nextDueDate);
+  if(days<0) return 'overdue';
+  if(days<=14) return 'due-soon';
+  return 'repaid'; // reuses the green "good standing" color
+}
+const INS_STATUS_TEXT = { overdue:'Overdue', 'due-soon':'Due soon', repaid:'Active', stopped:'Lapsed' };
+
+document.getElementById('addInsurance').addEventListener('click', ()=>{
+  const name = document.getElementById('insName').value.trim();
+  const provider = document.getElementById('insProvider').value.trim();
+  const boughtDate = document.getElementById('insBoughtDate').value || todayLocalISO();
+  const premium = +document.getElementById('insPremium').value;
+  const freq = +document.getElementById('insFrequency').value;
+
+  if(!name){ alert('Give this policy a name.'); return; }
+  if(!premium || premium<=0){ alert('Enter a premium amount greater than zero.'); return; }
+
+  getInsurance().push({
+    id: nwUid(),
+    name,
+    provider: provider || null,
+    boughtDate,
+    premiumAmount: premium,
+    frequencyMonths: freq,
+    nextDueDate: addMonthsClamped(boughtDate, freq),
+    status: 'active',
+    payments: [{ id: nwUid(), date: boughtDate, amount: premium }] // first premium, paid at purchase
+  });
+  saveData();
+  document.getElementById('insName').value = '';
+  document.getElementById('insProvider').value = '';
+  document.getElementById('insPremium').value = '';
+  document.getElementById('insBoughtDate').value = todayLocalISO();
+  renderInsurance();
+});
+
+function payPremium(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  const amtRaw = prompt(`Premium payment for "${ins.name}":`, ins.premiumAmount);
+  if(!amtRaw) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date paid (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  ins.payments.push({ id: nwUid(), date, amount: amt });
+  ins.nextDueDate = addMonthsClamped(ins.nextDueDate, ins.frequencyMonths);
+  saveData();
+  renderInsurance();
+}
+function editInsuranceInfo(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  const newName = prompt('Policy name:', ins.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newProvider = prompt('Bought from:', ins.provider||'');
+  if(newProvider===null) return;
+  const newPremium = prompt('Premium amount:', ins.premiumAmount);
+  if(newPremium===null) return;
+  const premium = +newPremium;
+  if(!premium || premium<=0){ alert('Enter a valid amount.'); return; }
+  ins.name = newName.trim();
+  ins.provider = newProvider.trim() || null;
+  ins.premiumAmount = premium;
+  saveData();
+  renderInsurance();
+}
+function setNextDueDate(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  const raw = prompt('Next due date (YYYY-MM-DD):', ins.nextDueDate);
+  if(raw===null) return;
+  if(raw) ins.nextDueDate = raw;
+  saveData();
+  renderInsurance();
+}
+function toggleInsuranceLapsed(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  ins.status = ins.status==='lapsed' ? 'active' : 'lapsed';
+  saveData();
+  renderInsurance();
+}
+function editPayment(insId, payId){
+  const ins = getInsurance().find(x=>x.id===insId);
+  if(!ins) return;
+  const pay = ins.payments.find(p=>p.id===payId);
+  if(!pay) return;
+  const amtRaw = prompt('Amount:', pay.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', pay.date);
+  if(dateRaw===null) return;
+  pay.amount = amt;
+  pay.date = dateRaw || pay.date;
+  saveData();
+  renderInsurance();
+}
+function deletePayment(insId, payId){
+  const ins = getInsurance().find(x=>x.id===insId);
+  if(!ins) return;
+  if(!confirm('Delete this payment entry?')) return;
+  ins.payments = ins.payments.filter(p=>p.id!==payId);
+  saveData();
+  renderInsurance();
+}
+function deleteInsurance(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  if(!confirm(`Delete "${ins.name}" entirely, including its payment history? This can't be undone.`)) return;
+  getNW().insurance = getInsurance().filter(x=>x.id!==id);
+  saveData();
+  renderInsurance();
+}
+
+function buildInsuranceCard(ins, today){
+  const totalPaid = insuranceTotalPaid(ins);
+  const badge = insuranceStatusBadge(ins, today);
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${badge}">${INS_STATUS_TEXT[badge]}</span>
+      <span class="h-name">${escapeHtml(ins.name)}</span>
+      <span class="h-meta">${ins.provider?escapeHtml(ins.provider):''}</span>
+    </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Premium</span>${fmtAmount(ins.premiumAmount)} / ${INS_FREQ_LABEL[ins.frequencyMonths]||''}</div>
+      <div class="h-figure"><span class="lbl">Bought</span>${ins.boughtDate}</div>
+      <div class="h-figure"><span class="lbl">Next due</span>${ins.nextDueDate}</div>
+      <div class="h-figure"><span class="lbl">Total paid</span>${fmtAmount(totalPaid)}</div>
+    </div>
+    <div class="h-actions">
+      <button class="buy" data-action="pay">+ Pay premium</button>
+      <button data-action="duedate">📅 Set next due</button>
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="lapsed">${ins.status==='lapsed'?'Mark active':'Mark lapsed'}</button>
+      <button data-action="log">☰ Payments</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="inslog-${ins.id}" style="display:none;"></div>
+  `;
+  card.querySelector('[data-action=pay]').addEventListener('click', ()=>payPremium(ins.id));
+  card.querySelector('[data-action=duedate]').addEventListener('click', ()=>setNextDueDate(ins.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editInsuranceInfo(ins.id));
+  card.querySelector('[data-action=lapsed]').addEventListener('click', ()=>toggleInsuranceLapsed(ins.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('inslog-'+ins.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteInsurance(ins.id));
+
+  const logEl = card.querySelector('.h-log');
+  if(ins.payments.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No payments logged yet.</span>';
+  }
+  ins.payments.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Paid ${fmtAmount(p.amount)} on ${p.date}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editPayment(ins.id, p.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deletePayment(ins.id, p.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  return card;
+}
+
+function renderInsuranceList(){
+  const wrap = document.getElementById('insuranceList');
+  const insurance = getInsurance();
+  if(insurance.length===0){
+    wrap.innerHTML = '<div class="empty-state">No policies logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  const today = todayLocalISO();
+  insurance.slice()
+    .sort((a,b)=>a.nextDueDate.localeCompare(b.nextDueDate))
+    .forEach(ins=>wrap.appendChild(buildInsuranceCard(ins, today)));
+}
+function renderInsuranceSummary(){
+  const insurance = getInsurance();
+  document.getElementById('insActiveCount').textContent = insurance.filter(i=>i.status!=='lapsed').length;
+  document.getElementById('insTotalPaid').textContent = fmtAmount(insurance.reduce((s,i)=>s+insuranceTotalPaid(i),0));
+}
+function renderInsurance(){
+  renderInsuranceList();
+  renderInsuranceSummary();
+}
+
 function setCurrency(currency){
   currentCurrency = currency;
   localStorage.setItem(CURRENCY_KEY, currency);
@@ -1270,6 +1718,8 @@ function renderAll(){
   renderTrendChart();
   renderNetWorth();
   renderLending();
+  renderSips();
+  renderInsurance();
 }
 
 // ---------- Data export / import ----------
@@ -1317,6 +1767,16 @@ function mergeNetWorthFromBackup(incomingNW){
         const l = migrateLending(raw);
         if(l.id && !existingLendIds.has(l.id)) localBucket.lending.push(l);
       });
+    }
+    if(Array.isArray(incomingBucket.sips)){
+      if(!localBucket.sips) localBucket.sips = [];
+      const existingSipIds = new Set(localBucket.sips.map(s=>s.id));
+      incomingBucket.sips.forEach(s=>{ if(s.id && !existingSipIds.has(s.id)) localBucket.sips.push(s); });
+    }
+    if(Array.isArray(incomingBucket.insurance)){
+      if(!localBucket.insurance) localBucket.insurance = [];
+      const existingInsIds = new Set(localBucket.insurance.map(i=>i.id));
+      incomingBucket.insurance.forEach(i=>{ if(i.id && !existingInsIds.has(i.id)) localBucket.insurance.push(i); });
     }
   });
   return addedHoldings;
@@ -1632,6 +2092,8 @@ document.getElementById('txAmountCurrency').textContent = currentCurrency==='USD
 resetForm();
 document.getElementById('holdingDate').value = todayLocalISO();
 document.getElementById('lendDate').value = todayLocalISO();
+document.getElementById('sipStartDate').value = todayLocalISO();
+document.getElementById('insBoughtDate').value = todayLocalISO();
 renderAll();
 checkBackupReminder();
 
