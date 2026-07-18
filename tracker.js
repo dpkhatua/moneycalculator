@@ -17,7 +17,8 @@ const ASSET_CLASS_LABELS = {
 function emptyNetWorthBucket(){
   return {
     holdings: [],
-    liabilities: { homeLoan:0, carLoan:0, ccDebt:0, personalLoan:0, otherLiability:0 }
+    liabilities: { homeLoan:0, carLoan:0, ccDebt:0, personalLoan:0, otherLiability:0 },
+    lending: [] // money lent to people — intentionally never included in net worth totals
   };
 }
 
@@ -982,6 +983,273 @@ function renderNetWorth(){
   renderNWSummary(investmentValue);
 }
 
+// ---------- Lending (money lent to people — never counted in net worth) ----------
+// One record per PERSON, not per loan — so lending to the same person again
+// adds to their existing record instead of creating a separate card.
+function getLending(){ return getNW().lending; }
+
+// Backward compatibility: records created before this multi-loan redesign
+// had a single {amount, dateLent, note} instead of a lends[] array.
+function migrateLending(l){
+  if(l.lends) return l;
+  return {
+    id: l.id,
+    name: l.name,
+    lends: [{ id: nwUid(), date: l.dateLent, amount: l.amount, note: l.note||null }],
+    repayments: (l.repayments||[]).map(r=>({ id:r.id, date:r.date, amount:r.amount, note:r.note||null }))
+  };
+}
+
+function lendingTotalLent(l){ return l.lends.reduce((s,x)=>s+x.amount,0); }
+function lendingTotalRepaid(l){ return (l.repayments||[]).reduce((s,r)=>s+r.amount,0); }
+function lendingOutstanding(l){ return Math.max(0, lendingTotalLent(l) - lendingTotalRepaid(l)); }
+function lendingStatus(l){
+  const outstanding = lendingOutstanding(l);
+  if(outstanding<=0) return 'repaid';
+  if(lendingTotalRepaid(l)>0) return 'partial';
+  return 'outstanding';
+}
+function lendingFirstDate(l){ return l.lends.reduce((min,x)=> x.date<min?x.date:min, l.lends[0].date); }
+const LENDING_STATUS_LABEL = { repaid:'Fully repaid', partial:'Partially repaid', outstanding:'Outstanding' };
+
+document.getElementById('addLending').addEventListener('click', ()=>{
+  const name = document.getElementById('lendName').value.trim();
+  const amount = +document.getElementById('lendAmount').value;
+  const date = document.getElementById('lendDate').value || todayLocalISO();
+  const note = document.getElementById('lendNote').value.trim();
+
+  if(!name){ alert('Enter who this was lent to.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+
+  // If a record already exists for this person (case-insensitive match),
+  // add this as another loan to them instead of creating a duplicate card.
+  const existing = getLending().find(l=>l.name.trim().toLowerCase()===name.toLowerCase());
+  if(existing){
+    existing.lends.push({ id: nwUid(), date, amount, note: note||null });
+  } else {
+    getLending().push({
+      id: nwUid(),
+      name,
+      lends: [{ id: nwUid(), date, amount, note: note||null }],
+      repayments: []
+    });
+  }
+  saveData();
+  document.getElementById('lendName').value = '';
+  document.getElementById('lendAmount').value = '';
+  document.getElementById('lendNote').value = '';
+  document.getElementById('lendDate').value = todayLocalISO();
+  renderLending();
+});
+
+function addLoanToPerson(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  const raw = prompt(`Another loan to "${l.name}" — amount:`, '');
+  if(!raw) return;
+  const amount = +raw;
+  if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  const note = prompt('Note (optional):', '') || '';
+  l.lends.push({ id: nwUid(), date, amount, note: note.trim()||null });
+  saveData();
+  renderLending();
+}
+
+function addRepayment(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  const outstanding = lendingOutstanding(l);
+  const raw = prompt(`Repayment from "${l.name}" (outstanding: ${fmtAmount(outstanding)}) — enter the full amount for a one-time payoff, or a partial amount for an EMI-style installment:`, outstanding);
+  if(!raw) return;
+  const amount = +raw;
+  if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date received (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  const note = prompt('Note (optional):', '') || '';
+  l.repayments = l.repayments || [];
+  l.repayments.push({ id: nwUid(), date, amount, note: note.trim()||null });
+  saveData();
+  renderLending();
+}
+
+function editLoan(personId, loanId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  const loan = l.lends.find(x=>x.id===loanId);
+  if(!loan) return;
+  const amtRaw = prompt('Amount lent:', loan.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', loan.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', loan.note||'');
+  if(noteRaw===null) return;
+  loan.amount = amt;
+  loan.date = dateRaw || loan.date;
+  loan.note = noteRaw.trim() || null;
+  saveData();
+  renderLending();
+}
+function deleteLoan(personId, loanId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  if(l.lends.length===1){
+    if(!confirm(`This is the only loan on record for "${l.name}" — deleting it removes their whole record. Continue?`)) return;
+    getNW().lending = getLending().filter(x=>x.id!==personId);
+    saveData();
+    renderLending();
+    return;
+  }
+  if(!confirm('Delete this loan entry?')) return;
+  l.lends = l.lends.filter(x=>x.id!==loanId);
+  saveData();
+  renderLending();
+}
+
+function editRepayment(personId, repId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  const rep = (l.repayments||[]).find(r=>r.id===repId);
+  if(!rep) return;
+  const amtRaw = prompt('Repayment amount:', rep.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', rep.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', rep.note||'');
+  if(noteRaw===null) return;
+  rep.amount = amt;
+  rep.date = dateRaw || rep.date;
+  rep.note = noteRaw.trim() || null;
+  saveData();
+  renderLending();
+}
+function deleteRepayment(personId, repId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  if(!confirm('Delete this repayment entry?')) return;
+  l.repayments = (l.repayments||[]).filter(r=>r.id!==repId);
+  saveData();
+  renderLending();
+}
+
+function renameLendingPerson(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  const newName = prompt('Name:', l.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  l.name = newName.trim();
+  saveData();
+  renderLending();
+}
+function deleteLendingPerson(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  if(!confirm(`Delete the entire record for "${l.name}", including all loans and repayments? This can't be undone.`)) return;
+  getNW().lending = getLending().filter(x=>x.id!==id);
+  saveData();
+  renderLending();
+}
+
+function buildLendingCard(l, today){
+  const totalLent = lendingTotalLent(l);
+  const repaid = lendingTotalRepaid(l);
+  const outstanding = lendingOutstanding(l);
+  const status = lendingStatus(l);
+  const daysSinceFirst = daysBetween(lendingFirstDate(l), today);
+
+  // Merge every loan and repayment into one chronological history, most recent first.
+  const history = [
+    ...l.lends.map(x=>({ ...x, kind:'lend' })),
+    ...(l.repayments||[]).map(x=>({ ...x, kind:'repay' }))
+  ].sort((a,b)=> b.date.localeCompare(a.date));
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${status}">${LENDING_STATUS_LABEL[status]}</span>
+      <span class="h-name">${escapeHtml(l.name)}</span>
+      <span class="h-meta">First loan ${daysSinceFirst} day${daysSinceFirst===1?'':'s'} ago · ${l.lends.length} loan${l.lends.length===1?'':'s'}</span>
+    </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Total lent</span>${fmtAmount(totalLent)}</div>
+      <div class="h-figure"><span class="lbl">Total repaid</span>${fmtAmount(repaid)}</div>
+      <div class="h-figure h-gain${outstanding>0?' loss':''}"><span class="lbl">Outstanding</span>${fmtAmount(outstanding)}</div>
+    </div>
+    <div class="h-actions">
+      <button class="buy" data-action="newloan">+ New loan</button>
+      <button data-action="repay" ${outstanding<=0?'disabled':''}>+ Add repayment</button>
+      <button data-action="rename">✎ Rename</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="lendlog-${l.id}"></div>
+  `;
+  card.querySelector('[data-action=newloan]').addEventListener('click', ()=>addLoanToPerson(l.id));
+  const repayBtn = card.querySelector('[data-action=repay]');
+  if(outstanding>0) repayBtn.addEventListener('click', ()=>addRepayment(l.id));
+  card.querySelector('[data-action=rename]').addEventListener('click', ()=>renameLendingPerson(l.id));
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteLendingPerson(l.id));
+
+  const logEl = card.querySelector('.h-log');
+  if(history.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No loans yet.</span>';
+  }
+  history.forEach(entry=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    const label = entry.kind==='lend'
+      ? `Lent ${fmtAmount(entry.amount)} on ${entry.date}${entry.note?' — '+escapeHtml(entry.note):''}`
+      : `Repaid ${fmtAmount(entry.amount)} on ${entry.date}${entry.note?' — '+escapeHtml(entry.note):''}`;
+    row.innerHTML = `<span style="${entry.kind==='repay'?'color:var(--green-deep);':''}">${label}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=> entry.kind==='lend' ? editLoan(l.id, entry.id) : editRepayment(l.id, entry.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=> entry.kind==='lend' ? deleteLoan(l.id, entry.id) : deleteRepayment(l.id, entry.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+
+  return card;
+}
+
+function renderLendingList(){
+  const wrap = document.getElementById('lendingList');
+  const lending = getLending();
+  if(lending.length===0){
+    wrap.innerHTML = '<div class="empty-state">No loans given logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  const today = todayLocalISO();
+  lending.slice()
+    .sort((a,b)=> lendingStatus(a)==='repaid' && lendingStatus(b)!=='repaid' ? 1 : (lendingStatus(b)==='repaid' && lendingStatus(a)!=='repaid' ? -1 : lendingFirstDate(b).localeCompare(lendingFirstDate(a))))
+    .forEach(l=>wrap.appendChild(buildLendingCard(l, today)));
+}
+
+function renderLendingSummary(){
+  const lending = getLending();
+  const totalLent = lending.reduce((s,l)=>s+lendingTotalLent(l),0);
+  const totalRepaid = lending.reduce((s,l)=>s+lendingTotalRepaid(l),0);
+  const totalOutstanding = lending.reduce((s,l)=>s+lendingOutstanding(l),0);
+  document.getElementById('lendTotalLent').textContent = fmtAmount(totalLent);
+  document.getElementById('lendTotalRepaid').textContent = fmtAmount(totalRepaid);
+  document.getElementById('lendTotalOutstanding').textContent = fmtAmount(totalOutstanding);
+}
+
+function renderLending(){
+  getNW().lending = getLending().map(migrateLending);
+  renderLendingList();
+  renderLendingSummary();
+}
+
 function setCurrency(currency){
   currentCurrency = currency;
   localStorage.setItem(CURRENCY_KEY, currency);
@@ -1001,6 +1269,7 @@ function renderAll(){
   renderCategoryChart();
   renderTrendChart();
   renderNetWorth();
+  renderLending();
 }
 
 // ---------- Data export / import ----------
@@ -1041,6 +1310,14 @@ function mergeNetWorthFromBackup(incomingNW){
       });
     }
     if(incomingBucket.liabilities) Object.assign(localBucket.liabilities, incomingBucket.liabilities);
+    if(Array.isArray(incomingBucket.lending)){
+      if(!localBucket.lending) localBucket.lending = [];
+      const existingLendIds = new Set(localBucket.lending.map(l=>l.id));
+      incomingBucket.lending.forEach(raw=>{
+        const l = migrateLending(raw);
+        if(l.id && !existingLendIds.has(l.id)) localBucket.lending.push(l);
+      });
+    }
   });
   return addedHoldings;
 }
@@ -1354,6 +1631,7 @@ document.getElementById('currencyIndia').classList.toggle('active', currentCurre
 document.getElementById('txAmountCurrency').textContent = currentCurrency==='USD' ? '$' : '₹';
 resetForm();
 document.getElementById('holdingDate').value = todayLocalISO();
+document.getElementById('lendDate').value = todayLocalISO();
 renderAll();
 checkBackupReminder();
 
