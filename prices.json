@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64140.8516,
+    "price": 64051.8086,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1843.24,
+    "price": 1840.17,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -403,5 +403,29 @@
     "price": 176.0,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-18T12:45:39.901488+00:00"
+  "CGPOWER.NS": {
+    "price": 905.0,
+    "currency": "INR"
+  },
+  "CROMPTON.NS": {
+    "price": 256.5,
+    "currency": "INR"
+  },
+  "DEEPAKNTR.NS": {
+    "price": 1708.0,
+    "currency": "INR"
+  },
+  "DIXON.NS": {
+    "price": 14329.0,
+    "currency": "INR"
+  },
+  "DMART.NS": {
+    "price": 3951.8999,
+    "currency": "INR"
+  },
+  "E2E.NS": {
+    "price": 404.95,
+    "currency": "INR"
+  },
+  "updatedAt": "2026-07-18T13:59:14.192375+00:00"
 }
