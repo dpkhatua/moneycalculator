@@ -2,6 +2,7 @@ const STORAGE_KEY = 'spendingTracker.transactions.v1';
 const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
 const NETWORTH_KEY = 'spendingTracker.netWorth.v1';
+const BUDGET_KEY = 'spendingTracker.budgets.v1';
 
 const DEFAULT_CATEGORIES = {
   expense: ['Food','Transport','Housing','Utilities','Shopping','Entertainment','Health','Education','Other'],
@@ -27,6 +28,7 @@ function emptyNetWorthBucket(){
 let transactions = [];
 let categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
 let netWorthData = { INR: emptyNetWorthBucket(), USD: emptyNetWorthBucket() };
+let budgets = { INR: {}, USD: {} }; // { category: monthlyBudgetAmount }, per currency
 let currentType = 'expense';
 let editingId = null;
 // currentCurrency is the single "which country am I looking at" lens: it decides
@@ -112,6 +114,11 @@ function loadData(){
       delete bucket.flatAssets;
     }
   });
+  try{
+    const rawBudget = localStorage.getItem(BUDGET_KEY);
+    const parsedBudget = rawBudget ? JSON.parse(rawBudget) : null;
+    budgets = { INR: (parsedBudget && parsedBudget.INR) || {}, USD: (parsedBudget && parsedBudget.USD) || {} };
+  } catch(e){ budgets = { INR: {}, USD: {} }; }
   // Migration: transactions logged before multi-currency support have no
   // currency field — treat them as INR, since that was the only option then.
   let migrated = false;
@@ -123,6 +130,7 @@ function persistLocal(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
     localStorage.setItem(CATEGORY_KEY, JSON.stringify(categories));
     localStorage.setItem(NETWORTH_KEY, JSON.stringify(netWorthData));
+    localStorage.setItem(BUDGET_KEY, JSON.stringify(budgets));
   } catch(e){
     alert('Could not save — your browser storage may be full or blocked (e.g. private browsing mode).');
   }
@@ -264,14 +272,17 @@ function populateCategoryFilter(){
   if(prevValue) sel.value = prevValue;
 }
 document.getElementById('filterMonth').addEventListener('change', renderAll);
+document.getElementById('filterType').addEventListener('change', renderAll);
 document.getElementById('filterCategory').addEventListener('change', renderAll);
 
 function getFilteredTx(){
   const month = document.getElementById('filterMonth').value;
+  const type = document.getElementById('filterType').value;
   const cat = document.getElementById('filterCategory').value;
   return transactions.filter(t=>{
     if(t.currency !== currentCurrency) return false;
     if(month!=='__all__' && monthKey(t.date)!==month) return false;
+    if(type && t.type!==type) return false;
     if(cat && t.category!==cat) return false;
     return true;
   });
@@ -280,6 +291,7 @@ function getFilteredTx(){
 // ---------- Rendering ----------
 function renderSummary(){
   const thisMonth = thisMonthLocal();
+  const thisYear = todayLocalISO().slice(0,4);
   const currencyTx = txInCurrentCurrency();
   const monthTx = currencyTx.filter(t=>monthKey(t.date)===thisMonth);
   const monthIncome = monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
@@ -289,6 +301,15 @@ function renderSummary(){
   const netEl = document.getElementById('sumMonthNet');
   netEl.textContent = fmtAmount(monthIncome-monthExpense);
   netEl.classList.toggle('brick', monthIncome-monthExpense<0);
+
+  const yearTx = currencyTx.filter(t=>t.date.slice(0,4)===thisYear);
+  const yearIncome = yearTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const yearExpense = yearTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  document.getElementById('sumYearIncome').textContent = fmtAmount(yearIncome);
+  document.getElementById('sumYearExpense').textContent = fmtAmount(yearExpense);
+  const yearNetEl = document.getElementById('sumYearNet');
+  yearNetEl.textContent = fmtAmount(yearIncome-yearExpense);
+  yearNetEl.classList.toggle('brick', yearIncome-yearExpense<0);
 
   const allIncome = currencyTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const allExpense = currencyTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
@@ -388,6 +409,139 @@ function renderTrendChart(){
     {label:'Expenses', data:expenseData, backgroundColor:'#A2452F'}
   ], {}, 'bar');
 }
+
+function renderYearlyStats(){
+  const wrap = document.getElementById('yearlyStatsTable');
+  const currencyTx = txInCurrentCurrency();
+  if(currencyTx.length===0){
+    wrap.innerHTML = '<div class="empty-state">Nothing logged yet.</div>';
+    return;
+  }
+  const years = [...new Set(currencyTx.map(t=>t.date.slice(0,4)))].sort().reverse();
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Year</th><th style="text-align:right;">Income</th><th style="text-align:right;">Expenses</th><th style="text-align:right;">Net</th></tr></thead>
+      <tbody>
+  `;
+  years.forEach(year=>{
+    const yearTx = currencyTx.filter(t=>t.date.slice(0,4)===year);
+    const income = yearTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+    const expense = yearTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+    const net = income-expense;
+    html += `
+      <tr>
+        <td>${year}</td>
+        <td class="num">${fmtAmount(income)}</td>
+        <td class="num">${fmtAmount(expense)}</td>
+        <td class="num ${net<0?'loss':'gain'}">${net>=0?'+':''}${fmtAmount(net)}</td>
+      </tr>
+    `;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ---------- Budget Plan ----------
+function getBudgets(){ return budgets[currentCurrency]; }
+
+function populateBudgetCategorySelect(){
+  const sel = document.getElementById('budgetCategory');
+  const prevValue = sel.value;
+  sel.innerHTML = '';
+  categories.expense.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+}
+
+document.getElementById('saveBudget').addEventListener('click', ()=>{
+  const category = document.getElementById('budgetCategory').value;
+  const amount = +document.getElementById('budgetAmount').value;
+  if(!category){ alert('Pick a category.'); return; }
+  if(!amount || amount<=0){ alert('Enter a budget amount greater than zero.'); return; }
+  getBudgets()[category] = amount;
+  saveData();
+  document.getElementById('budgetAmount').value = '';
+  renderBudget();
+});
+
+function removeBudget(category){
+  if(!confirm(`Remove the budget for "${category}"?`)) return;
+  delete getBudgets()[category];
+  saveData();
+  renderBudget();
+}
+function editBudget(category){
+  const current = getBudgets()[category];
+  const raw = prompt(`Monthly budget for "${category}":`, current);
+  if(raw===null) return;
+  const amt = +raw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  getBudgets()[category] = amt;
+  saveData();
+  renderBudget();
+}
+
+function renderBudgetList(){
+  const wrap = document.getElementById('budgetList');
+  const budgetMap = getBudgets();
+  const cats = Object.keys(budgetMap);
+  if(cats.length===0){
+    wrap.innerHTML = '<div class="empty-state">No category budgets set yet — add one above.</div>';
+    return;
+  }
+  const thisMonth = thisMonthLocal();
+  const monthExpenseTx = txInCurrentCurrency().filter(t=>t.type==='expense' && monthKey(t.date)===thisMonth);
+
+  wrap.innerHTML = '';
+  cats.sort().forEach(cat=>{
+    const budgeted = budgetMap[cat];
+    const spent = monthExpenseTx.filter(t=>t.category===cat).reduce((s,t)=>s+t.amount,0);
+    const remaining = budgeted - spent;
+    const pct = budgeted>0 ? Math.min(100, (spent/budgeted)*100) : 0;
+    const over = spent>budgeted;
+
+    const row = document.createElement('div');
+    row.className = 'budget-row';
+    row.innerHTML = `
+      <div class="b-top">
+        <span class="b-cat">${escapeHtml(cat)}</span>
+        <span class="b-figures"><b>${fmtAmount(spent)}</b> of ${fmtAmount(budgeted)} — ${over?'over by '+fmtAmount(Math.abs(remaining)):fmtAmount(remaining)+' left'}</span>
+      </div>
+      <div class="budget-bar-track"><div class="budget-bar-fill${over?' over':''}" style="width:${pct}%;"></div></div>
+      <div class="b-actions">
+        <button data-action="edit">✎ Edit</button>
+        <button data-action="del">× Remove</button>
+      </div>
+    `;
+    row.querySelector('[data-action=edit]').addEventListener('click', ()=>editBudget(cat));
+    row.querySelector('[data-action=del]').addEventListener('click', ()=>removeBudget(cat));
+    wrap.appendChild(row);
+  });
+}
+
+function renderBudgetSummary(){
+  const budgetMap = getBudgets();
+  const cats = Object.keys(budgetMap);
+  const thisMonth = thisMonthLocal();
+  const monthExpenseTx = txInCurrentCurrency().filter(t=>t.type==='expense' && monthKey(t.date)===thisMonth);
+  const totalPlanned = cats.reduce((s,c)=>s+budgetMap[c],0);
+  const totalSpent = cats.reduce((s,c)=>s+monthExpenseTx.filter(t=>t.category===c).reduce((s2,t)=>s2+t.amount,0),0);
+  document.getElementById('budgetTotalPlanned').textContent = fmtAmount(totalPlanned);
+  document.getElementById('budgetTotalSpent').textContent = fmtAmount(totalSpent);
+  const remEl = document.getElementById('budgetTotalRemaining');
+  remEl.textContent = fmtAmount(totalPlanned-totalSpent);
+  remEl.classList.toggle('brick', totalPlanned-totalSpent<0);
+}
+
+function renderBudget(){
+  populateBudgetCategorySelect();
+  renderBudgetList();
+  renderBudgetSummary();
+}
+
 
 // ---------- Net Worth ----------
 function getNW(){ return netWorthData[currentCurrency]; }
@@ -652,9 +806,13 @@ function editLot(holdingId, lotId){
   const dateRaw = prompt('Date (YYYY-MM-DD):', lot.date);
   if(dateRaw===null) return;
 
+  const noteRaw = prompt('Note (optional):', lot.note||'');
+  if(noteRaw===null) return;
+
   lot.quantity = qty;
   lot.price = price;
   lot.date = dateRaw || lot.date;
+  lot.note = noteRaw.trim() || null;
   saveData();
   renderNetWorth();
 }
@@ -750,10 +908,12 @@ document.getElementById('refreshAllPrices').addEventListener('click', async ()=>
 const CATEGORY_GROUPS = [
   { name: 'Bank & Deposits', classes: ['savings','fd','rd'] },
   { name: 'Retirement', classes: ['epf','ppf'] },
-  { name: 'Market Investments', classes: ['equity','mf','liquidmf'] },
-  { name: 'Alternative', classes: ['gold','crypto'] },
+  { name: 'Equity', classes: ['equity'] },
+  { name: 'Mutual Fund', classes: ['mf'] },
+  { name: 'Liquid Fund', classes: ['liquidmf'] },
+  { name: 'Gold', classes: ['gold'] },
   { name: 'International', classes: ['usstock'] },
-  { name: 'Other Assets', classes: ['realestate','vehicle','other'] }
+  { name: 'Other', classes: ['crypto','realestate','vehicle','other'] }
 ];
 // Which category groups are currently expanded — resets on page reload,
 // same as any collapsible section. Collapsed by default so you only open
@@ -826,7 +986,7 @@ function buildHoldingCard(h, today){
   h.lots.forEach(l=>{
     const row = document.createElement('div');
     row.className = 'log-row';
-    row.innerHTML = `<span>Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}</span>`;
+    row.innerHTML = `<span>Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}</span>`;
     const editBtn = document.createElement('button');
     editBtn.textContent = '✎';
     editBtn.title = 'Edit this entry';
@@ -1296,6 +1456,19 @@ function sipTotalInvested(sip){ return sip.installments.reduce((s,x)=>s+x.amount
 // Catches up any installments whose due date has passed since we last
 // checked — this is what makes it feel automatic: just opening the tracker
 // logs anything that came due, for every SIP still marked active.
+function populateSipLinkedHoldingSelect(){
+  const sel = document.getElementById('sipLinkedHolding');
+  const prevValue = sel.value;
+  sel.innerHTML = '<option value="">— none —</option>';
+  getNW().holdings.forEach(h=>{
+    const opt = document.createElement('option');
+    opt.value = h.id;
+    opt.textContent = `${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+}
+
 function syncSipInstallments(){
   const today = todayLocalISO();
   let changed = false;
@@ -1305,7 +1478,18 @@ function syncSipInstallments(){
     if(sip.status!=='active') return;
     let guard = 0;
     while(sip.nextDueDate<=today && guard<600){
-      sip.installments.push({ id: nwUid(), date: sip.nextDueDate, amount: sip.amount });
+      const installmentDate = sip.nextDueDate;
+      sip.installments.push({ id: nwUid(), date: installmentDate, amount: sip.amount });
+      // If this SIP is linked to a real holding, also log the same amount as
+      // a buy there — that's what makes an automatic note show up at the
+      // bottom of the holding's own buy/sell log, right where you'd look for it.
+      if(sip.linkedHoldingId){
+        const holding = getNW().holdings.find(h=>h.id===sip.linkedHoldingId);
+        if(holding){
+          holding.lots.push({ id: nwUid(), date: installmentDate, quantity: 1, price: sip.amount, note: `SIP: ${sip.name}` });
+          holding.currentPrice = holding.currentPrice || sip.amount;
+        }
+      }
       sip.nextDueDate = advanceDate(sip.nextDueDate, sip.frequencyUnit, sip.frequencyValue);
       changed = true;
       guard++;
@@ -1318,7 +1502,7 @@ document.getElementById('addSip').addEventListener('click', ()=>{
   const name = document.getElementById('sipName').value.trim();
   const amount = +document.getElementById('sipAmount').value;
   const startDate = document.getElementById('sipStartDate').value || todayLocalISO();
-  const linkedHolding = document.getElementById('sipLinkedHolding').value.trim();
+  const linkedHoldingId = document.getElementById('sipLinkedHolding').value || null;
   const [frequencyUnit, freqValueRaw] = document.getElementById('sipFrequency').value.split(':');
   const frequencyValue = +freqValueRaw;
 
@@ -1330,7 +1514,7 @@ document.getElementById('addSip').addEventListener('click', ()=>{
     name,
     amount,
     startDate,
-    linkedHolding: linkedHolding || null,
+    linkedHoldingId,
     frequencyUnit,
     frequencyValue,
     status: 'active',
@@ -1423,6 +1607,8 @@ function buildSipCard(sip){
   const paidThisYear = sipPaidThisYear(sip);
   const yearlyReq = sipYearlyRequirement(sip);
   const neededThisYear = sipNeededThisYear(sip);
+  const linkedHolding = sip.linkedHoldingId ? getNW().holdings.find(h=>h.id===sip.linkedHoldingId) : null;
+  const linkedName = linkedHolding ? linkedHolding.name : (sip.linkedHolding || null); // old text-based links still display
 
   const card = document.createElement('div');
   card.className = 'holding-card';
@@ -1430,7 +1616,7 @@ function buildSipCard(sip){
     <div class="hc-top">
       <span class="status-badge ${isStopped?'stopped':'repaid'}">${isStopped?'Stopped':'Active'}</span>
       <span class="h-name">${escapeHtml(sip.name)}</span>
-      <span class="h-meta">${sip.linkedHolding?'→ '+escapeHtml(sip.linkedHolding):''}</span>
+      <span class="h-meta">${linkedName?'→ '+escapeHtml(linkedName):''}</span>
     </div>
     <div class="hc-stats">
       <div class="h-figure"><span class="lbl">Amount / ${sipFrequencyLabel(sip)}</span>${fmtAmount(sip.amount)}</div>
@@ -1469,7 +1655,7 @@ function buildSipCard(sip){
   sip.installments.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(inst=>{
     const row = document.createElement('div');
     row.className = 'log-row';
-    row.innerHTML = `<span>Added ${fmtAmount(inst.amount)} on ${inst.date}${sip.linkedHolding?' → '+escapeHtml(sip.linkedHolding):''}</span>`;
+    row.innerHTML = `<span>Added ${fmtAmount(inst.amount)} on ${inst.date}${linkedName?' → '+escapeHtml(linkedName):''}</span>`;
     const editBtn = document.createElement('button');
     editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
     editBtn.addEventListener('click', ()=>editInstallment(sip.id, inst.id));
@@ -1506,8 +1692,10 @@ function renderSipsSummary(){
 }
 function renderSips(){
   syncSipInstallments();
+  populateSipLinkedHoldingSelect();
   renderSipsList();
   renderSipsSummary();
+  renderNetWorth(); // a SIP sync may have just added a buy to a linked holding — keep that in sync too
 }
 
 // ---------- Insurance ----------
@@ -1755,6 +1943,7 @@ function setupCollapsibleSection(headId, arrowId, bodyId, storageKey){
 setupCollapsibleSection('lendingSectionHead','lendingArrow','lendingSectionBody','spendingTracker.collapsed.lending');
 setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
+setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
 
 function setCurrency(currency){
   currentCurrency = currency;
@@ -1772,8 +1961,11 @@ function renderAll(){
   populateCategoryFilter();
   renderSummary();
   renderList();
+  renderBudget();
   renderCategoryChart();
   renderTrendChart();
+  renderYearlyStats();
+  syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
   renderNetWorth();
   renderLending();
   renderSips();
@@ -1841,7 +2033,7 @@ function mergeNetWorthFromBackup(incomingNW){
 }
 
 document.getElementById('exportJson').addEventListener('click', ()=>{
-  const payload = { transactions, categories, netWorthData, exportedAt: new Date().toISOString() };
+  const payload = { transactions, categories, netWorthData, budgets, exportedAt: new Date().toISOString() };
   downloadBlob('spending-tracker-backup-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(payload, null, 2), 'application/json');
   localStorage.setItem('spendingTracker.lastExport', Date.now().toString());
   document.getElementById('backupReminder').style.display = 'none';
@@ -1873,6 +2065,10 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
         });
       }
       mergeNetWorthFromBackup(data.netWorthData);
+      if(data.budgets){
+        Object.assign(budgets.INR, data.budgets.INR||{});
+        Object.assign(budgets.USD, data.budgets.USD||{});
+      }
       saveData();
       renderAll();
       alert('Import complete.');
@@ -2046,7 +2242,7 @@ async function pushToDrive(silent){
   try{
     driveSyncing = true;
     if(silent) setDriveStatus('Syncing to Drive…', true);
-    const payload = JSON.stringify({ transactions, categories, netWorthData, exportedAt: new Date().toISOString() }, null, 2);
+    const payload = JSON.stringify({ transactions, categories, netWorthData, budgets, exportedAt: new Date().toISOString() }, null, 2);
     const existing = await findDriveFile();
     const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
     const boundary = 'ledgerboundary' + Date.now();
@@ -2106,6 +2302,10 @@ async function pullFromDrive(silent){
       });
     }
     const addedHoldings = mergeNetWorthFromBackup(data.netWorthData);
+    if(data.budgets){
+      Object.assign(budgets.INR, data.budgets.INR||{});
+      Object.assign(budgets.USD, data.budgets.USD||{});
+    }
     if(added>0 || addedHoldings>0){
       saveDataLocalOnly(); // don't re-trigger a push for data we just pulled
       renderAll();
