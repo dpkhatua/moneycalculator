@@ -12,7 +12,7 @@
     "currency": "USD"
   },
   "AVGO": {
-    "price": 370.825,
+    "price": 370.83,
     "currency": "USD"
   },
   "RKLB": {
@@ -44,11 +44,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63876.3711,
+    "price": 63910.5586,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1839.4399,
+    "price": 1841.65,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -383,5 +383,5 @@
     "price": 176.0,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-18T01:17:31.624222+00:00"
+  "updatedAt": "2026-07-18T04:37:16.475651+00:00"
 }
