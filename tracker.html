@@ -237,6 +237,9 @@
   .status-badge.outstanding{color:var(--brick);}
   .status-badge.partial{color:var(--mustard);}
   .status-badge.repaid{color:var(--green-deep);}
+  .status-badge.due-soon{color:var(--mustard);}
+  .status-badge.overdue{color:var(--brick);}
+  .status-badge.stopped{color:var(--ink-soft);}
 
   .nw-totals{display:flex;gap:28px;flex-wrap:wrap;margin:18px 0;}
   .nw-totals .t{}
@@ -546,6 +549,100 @@
   </div>
 
   <div class="holding-list" id="lendingList" style="margin-bottom:44px;"></div>
+
+  <!-- SIPs -->
+  <div class="section-head"><h2>SIPs</h2></div>
+  <p class="section-desc">Ongoing SIPs — each installment is logged automatically on its due date, every month, until you stop it. Not included in net worth directly; update the linked holding's current value separately to reflect what it's actually worth.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a SIP</div>
+      <div class="holding-form">
+        <div>
+          <label>SIP name</label>
+          <input type="text" id="sipName" placeholder="e.g. HDFC Flexicap SIP" maxlength="80">
+        </div>
+        <div>
+          <label>Amount per installment</label>
+          <input type="number" id="sipAmount" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Frequency</label>
+          <select id="sipFrequency">
+            <option value="days:7">Weekly</option>
+            <option value="months:1" selected>Monthly</option>
+            <option value="months:3">Quarterly</option>
+          </select>
+        </div>
+        <div>
+          <label>Start date</label>
+          <input type="date" id="sipStartDate">
+        </div>
+        <div>
+          <label>Linked to <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <input type="text" id="sipLinkedHolding" placeholder="e.g. HDFC Flexicap Fund holding" maxlength="80">
+        </div>
+        <div>
+          <button class="btn-primary" id="addSip" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Active SIPs</div><div class="val" id="sipActiveCount">0</div></div>
+    <div class="t"><div class="lbl">Monthly-equivalent commitment</div><div class="val" id="sipMonthlyTotal">0</div></div>
+    <div class="t"><div class="lbl">Total invested via SIPs</div><div class="val" id="sipTotalInvested">0</div></div>
+  </div>
+
+  <div class="holding-list" id="sipList" style="margin-bottom:44px;"></div>
+
+  <!-- Insurance -->
+  <div class="section-head"><h2>Insurance</h2></div>
+  <p class="section-desc">Ongoing insurance policies — track where you bought each one, what's due next, and how much you've paid in total. Not included in net worth.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a policy</div>
+      <div class="holding-form">
+        <div>
+          <label>Policy name</label>
+          <input type="text" id="insName" placeholder="e.g. Term Life, Health Insurance" maxlength="80">
+        </div>
+        <div>
+          <label>Bought from</label>
+          <input type="text" id="insProvider" placeholder="e.g. LIC, Star Health" maxlength="80">
+        </div>
+        <div>
+          <label>Bought date</label>
+          <input type="date" id="insBoughtDate">
+        </div>
+        <div>
+          <label>Premium amount</label>
+          <input type="number" id="insPremium" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Frequency</label>
+          <select id="insFrequency">
+            <option value="1">Monthly</option>
+            <option value="3">Quarterly</option>
+            <option value="6">Half-yearly</option>
+            <option value="12" selected>Yearly</option>
+          </select>
+        </div>
+        <div>
+          <button class="btn-primary" id="addInsurance" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Active policies</div><div class="val" id="insActiveCount">0</div></div>
+    <div class="t"><div class="lbl">Total paid to date</div><div class="val" id="insTotalPaid">0</div></div>
+  </div>
+
+  <div class="holding-list" id="insuranceList" style="margin-bottom:44px;"></div>
 
   <!-- Data management -->
   <div class="section-head"><h2>Your data</h2></div>
