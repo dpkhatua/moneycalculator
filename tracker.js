@@ -1698,6 +1698,28 @@ function renderInsurance(){
   renderInsuranceSummary();
 }
 
+// ---------- Collapsible sections (Lending / SIPs / Insurance) ----------
+// Remembered for the browser session (sessionStorage) so collapsing a
+// section you don't use stays collapsed as you keep using the tracker,
+// without permanently hiding it forever across visits.
+function setupCollapsibleSection(headId, arrowId, bodyId, storageKey){
+  const head = document.getElementById(headId);
+  const arrow = document.getElementById(arrowId);
+  const body = document.getElementById(bodyId);
+  const collapsed = sessionStorage.getItem(storageKey) === '1';
+  body.style.display = collapsed ? 'none' : '';
+  arrow.textContent = collapsed ? '▸' : '▾';
+  head.addEventListener('click', ()=>{
+    const nowCollapsed = body.style.display !== 'none';
+    body.style.display = nowCollapsed ? 'none' : '';
+    arrow.textContent = nowCollapsed ? '▸' : '▾';
+    sessionStorage.setItem(storageKey, nowCollapsed ? '1' : '0');
+  });
+}
+setupCollapsibleSection('lendingSectionHead','lendingArrow','lendingSectionBody','spendingTracker.collapsed.lending');
+setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
+setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
+
 function setCurrency(currency){
   currentCurrency = currency;
   localStorage.setItem(CURRENCY_KEY, currency);
