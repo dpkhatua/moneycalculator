@@ -102,6 +102,9 @@
 
   /* Section headers */
   .section-head{display:flex;align-items:baseline;gap:16px;margin:0 0 6px;flex-wrap:wrap;justify-content:space-between;}
+  .section-head.collapsible{cursor:pointer;user-select:none;padding:4px 0;}
+  .section-head.collapsible:hover h2{color:var(--green-deep);}
+  .section-arrow{color:var(--mustard);font-size:15px;margin-right:8px;display:inline-block;width:12px;}
   .section-head h2{font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-weight:600;font-size:1.5rem;margin:0;}
   .section-desc{color:var(--ink-soft);font-size:14px;margin:6px 0 20px;}
 
@@ -512,7 +515,8 @@
   </div>
 
   <!-- Lending -->
-  <div class="section-head"><h2>Lending</h2></div>
+  <div class="section-head collapsible" id="lendingSectionHead"><h2><span class="section-arrow" id="lendingArrow">▾</span>Lending</h2></div>
+  <div id="lendingSectionBody">
   <p class="section-desc">Money you've lent to people — <b>not included in net worth above</b>, since it's a debt someone owes you rather than wealth you're holding. Follows the same 🇺🇸/🇮🇳 currency toggle as everything else.</p>
 
   <div class="tracker-grid" style="margin-bottom:20px;">
@@ -549,9 +553,11 @@
   </div>
 
   <div class="holding-list" id="lendingList" style="margin-bottom:44px;"></div>
+  </div>
 
   <!-- SIPs -->
-  <div class="section-head"><h2>SIPs</h2></div>
+  <div class="section-head collapsible" id="sipsSectionHead"><h2><span class="section-arrow" id="sipsArrow">▾</span>SIPs</h2></div>
+  <div id="sipsSectionBody">
   <p class="section-desc">Ongoing SIPs — each installment is logged automatically on its due date, every month, until you stop it. Not included in net worth directly; update the linked holding's current value separately to reflect what it's actually worth.</p>
 
   <div class="tracker-grid" style="margin-bottom:20px;">
@@ -596,9 +602,11 @@
   </div>
 
   <div class="holding-list" id="sipList" style="margin-bottom:44px;"></div>
+  </div>
 
   <!-- Insurance -->
-  <div class="section-head"><h2>Insurance</h2></div>
+  <div class="section-head collapsible" id="insuranceSectionHead"><h2><span class="section-arrow" id="insuranceArrow">▾</span>Insurance</h2></div>
+  <div id="insuranceSectionBody">
   <p class="section-desc">Ongoing insurance policies — track where you bought each one, what's due next, and how much you've paid in total. Not included in net worth.</p>
 
   <div class="tracker-grid" style="margin-bottom:20px;">
@@ -643,6 +651,7 @@
   </div>
 
   <div class="holding-list" id="insuranceList" style="margin-bottom:44px;"></div>
+  </div>
 
   <!-- Data management -->
   <div class="section-head"><h2>Your data</h2></div>
