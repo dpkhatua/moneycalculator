@@ -15,6 +15,26 @@
     "price": 370.83,
     "currency": "USD"
   },
+  "NASA": {
+    "price": 22.99,
+    "currency": "USD"
+  },
+  "IXHL": {
+    "price": 3.17,
+    "currency": "USD"
+  },
+  "SMH": {
+    "price": 556.53,
+    "currency": "USD"
+  },
+  "SPCX": {
+    "price": 123.99,
+    "currency": "USD"
+  },
+  "UBER": {
+    "price": 72.46,
+    "currency": "USD"
+  },
   "RKLB": {
     "price": 67.62,
     "currency": "USD"
@@ -44,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63910.5586,
+    "price": 63919.0703,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1841.65,
+    "price": 1844.27,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -383,5 +403,5 @@
     "price": 176.0,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-18T04:37:16.475651+00:00"
+  "updatedAt": "2026-07-18T06:07:43.183051+00:00"
 }
