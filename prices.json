@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64051.8086,
+    "price": 64121.5,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1840.17,
+    "price": 1841.86,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -427,5 +427,33 @@
     "price": 404.95,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-18T13:59:14.192375+00:00"
+  "HDFCSML250.NS": {
+    "price": 181.3,
+    "currency": "INR"
+  },
+  "IREDA.NS": {
+    "price": 121.64,
+    "currency": "INR"
+  },
+  "IRFC.NS": {
+    "price": 88.41,
+    "currency": "INR"
+  },
+  "JIOFIN.NS": {
+    "price": 242.98,
+    "currency": "INR"
+  },
+  "KPITTECH.NS": {
+    "price": 554.05,
+    "currency": "INR"
+  },
+  "KWIL.NS": {
+    "price": 32.75,
+    "currency": "INR"
+  },
+  "LICI.NS": {
+    "price": 433.1,
+    "currency": "INR"
+  },
+  "updatedAt": "2026-07-18T14:14:34.104111+00:00"
 }
