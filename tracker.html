@@ -230,6 +230,14 @@
   }
   .log-row button:hover{background:var(--paper);color:var(--ink);}
 
+  .status-badge{
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10px;
+    letter-spacing:0.03em;text-transform:uppercase;padding:2px 7px;border:1px solid currentColor;
+  }
+  .status-badge.outstanding{color:var(--brick);}
+  .status-badge.partial{color:var(--mustard);}
+  .status-badge.repaid{color:var(--green-deep);}
+
   .nw-totals{display:flex;gap:28px;flex-wrap:wrap;margin:18px 0;}
   .nw-totals .t{}
   .nw-totals .t .lbl{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);margin-bottom:4px;}
@@ -499,6 +507,45 @@
     <div class="summary-card"><div class="label">Liabilities</div><div class="value brick" id="nwLiabTotal">0</div></div>
     <div class="summary-card"><div class="label">Net worth</div><div class="value" id="nwGrandTotal" style="font-size:1.7rem;">0</div></div>
   </div>
+
+  <!-- Lending -->
+  <div class="section-head"><h2>Lending</h2></div>
+  <p class="section-desc">Money you've lent to people — <b>not included in net worth above</b>, since it's a debt someone owes you rather than wealth you're holding. Follows the same 🇺🇸/🇮🇳 currency toggle as everything else.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a loan given</div>
+      <div class="holding-form">
+        <div>
+          <label>Lent to</label>
+          <input type="text" id="lendName" placeholder="Name of person/party" maxlength="80">
+        </div>
+        <div>
+          <label>Amount lent</label>
+          <input type="number" id="lendAmount" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Date lent</label>
+          <input type="date" id="lendDate">
+        </div>
+        <div>
+          <label>Note <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <input type="text" id="lendNote" placeholder="e.g. for medical expense, to be repaid monthly" maxlength="140">
+        </div>
+        <div>
+          <button class="btn-primary" id="addLending" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Total lent</div><div class="val" id="lendTotalLent">0</div></div>
+    <div class="t"><div class="lbl">Total repaid</div><div class="val" id="lendTotalRepaid">0</div></div>
+    <div class="t"><div class="lbl">Outstanding</div><div class="val" id="lendTotalOutstanding">0</div></div>
+  </div>
+
+  <div class="holding-list" id="lendingList" style="margin-bottom:44px;"></div>
 
   <!-- Data management -->
   <div class="section-head"><h2>Your data</h2></div>
