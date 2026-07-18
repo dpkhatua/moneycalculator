@@ -21,7 +21,8 @@ function emptyNetWorthBucket(){
     liabilities: { homeLoan:0, carLoan:0, ccDebt:0, personalLoan:0, otherLiability:0 },
     lending: [], // money lent to people — intentionally never included in net worth totals
     sips: [],    // ongoing SIPs — installments auto-log on their due date
-    insurance: [] // ongoing insurance policies
+    insurance: [], // ongoing insurance policies
+    recurringExpenses: [] // "definite spending" — fixed bills that auto-log as real expenses on schedule
   };
 }
 
@@ -1922,6 +1923,216 @@ function renderInsurance(){
   renderInsuranceSummary();
 }
 
+// ---------- Recurring Expenses ("Definite Spending") ----------
+// Same idea as SIPs, but for expenses: fires automatically on schedule and
+// logs a real transaction each time, so it shows up in your normal spending
+// stats/budget/charts — not a separate parallel ledger.
+function getRecurring(){ return getNW().recurringExpenses; }
+
+function recurringFrequencyLabel(r){
+  return r.frequencyUnit==='months' ? 'Monthly' : `Every ${r.frequencyValue} day${r.frequencyValue===1?'':'s'}`;
+}
+function recurringMonthlyEquivalent(r){
+  return r.frequencyUnit==='days' ? r.amount*(30.44/r.frequencyValue) : r.amount;
+}
+function recurringTotalLogged(r){ return r.loggedTx.reduce((s,x)=>s+x.amount,0); }
+
+function populateRecurringCategorySelect(){
+  const sel = document.getElementById('recurCategory');
+  const prevValue = sel.value;
+  sel.innerHTML = '';
+  categories.expense.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+}
+
+// Catches up any due dates that have passed, logging a real expense
+// transaction for each one — this is what makes it "automatic."
+function syncRecurringExpenses(){
+  const today = todayLocalISO();
+  let changed = false;
+  getRecurring().forEach(r=>{
+    if(r.status!=='active') return;
+    let guard = 0;
+    while(r.nextDueDate<=today && guard<600){
+      const tx = { id: uid(), date: r.nextDueDate, type:'expense', category:r.category, description:`Recurring: ${r.name}`, amount:r.amount, currency:currentCurrency };
+      transactions.push(tx);
+      r.loggedTx.push({ id: tx.id, date: r.nextDueDate, amount: r.amount });
+      r.nextDueDate = advanceDate(r.nextDueDate, r.frequencyUnit, r.frequencyValue);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+document.getElementById('addRecurring').addEventListener('click', ()=>{
+  const name = document.getElementById('recurName').value.trim();
+  const amount = +document.getElementById('recurAmount').value;
+  const category = document.getElementById('recurCategory').value;
+  const frequencyUnit = document.getElementById('recurFrequencyType').value;
+  const daysN = +document.getElementById('recurDaysN').value;
+  const startDate = document.getElementById('recurStartDate').value || todayLocalISO();
+
+  if(!name){ alert('Give this a name.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+  if(frequencyUnit==='days' && (!daysN || daysN<=0)){ alert('Enter how many days between each one.'); return; }
+
+  getRecurring().push({
+    id: nwUid(),
+    name,
+    amount,
+    category,
+    frequencyUnit,
+    frequencyValue: frequencyUnit==='days' ? daysN : 1,
+    startDate,
+    status: 'active',
+    stoppedDate: null,
+    nextDueDate: startDate,
+    loggedTx: []
+  });
+  saveData();
+  document.getElementById('recurName').value = '';
+  document.getElementById('recurAmount').value = '';
+  document.getElementById('recurDaysN').value = '';
+  document.getElementById('recurStartDate').value = todayLocalISO();
+  renderRecurring();
+});
+
+function stopRecurring(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm(`Stop "${r.name}"? No more transactions will be logged automatically after today.`)) return;
+  r.status = 'stopped';
+  r.stoppedDate = todayLocalISO();
+  saveData();
+  renderRecurring();
+}
+function resumeRecurring(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  r.status = 'active';
+  r.stoppedDate = null;
+  if(r.nextDueDate < todayLocalISO()) r.nextDueDate = todayLocalISO();
+  saveData();
+  renderRecurring();
+}
+function editRecurringInfo(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  const newName = prompt('Name:', r.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newAmt = prompt('Amount (applies to future occurrences only):', r.amount);
+  if(newAmt===null) return;
+  const amt = +newAmt;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  r.name = newName.trim();
+  r.amount = amt;
+  saveData();
+  renderRecurring();
+}
+function deleteRecurring(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  const removeTx = confirm(`Delete "${r.name}"? Click OK to also remove the ${r.loggedTx.length} transaction(s) it already logged, or Cancel to keep those transactions and just stop future ones.`);
+  if(removeTx){
+    const loggedIds = new Set(r.loggedTx.map(l=>l.id));
+    transactions = transactions.filter(t=>!loggedIds.has(t.id));
+  }
+  getNW().recurringExpenses = getRecurring().filter(x=>x.id!==id);
+  saveData();
+  renderAll();
+}
+
+function buildRecurringCard(r, today){
+  const totalLogged = recurringTotalLogged(r);
+  const isStopped = r.status==='stopped';
+  const daysUntilDue = daysBetween(today, r.nextDueDate);
+  let badge = 'repaid', badgeText = 'Active';
+  if(isStopped){ badge='stopped'; badgeText='Stopped'; }
+  else if(daysUntilDue<0){ badge='overdue'; badgeText='Overdue'; }
+  else if(daysUntilDue<=3){ badge='due-soon'; badgeText='Due soon'; }
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${badge}">${badgeText}</span>
+      <span class="h-name">${escapeHtml(r.name)}</span>
+      <span class="h-meta">${escapeHtml(r.category)}</span>
+    </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Amount</span>${fmtAmount(r.amount)}</div>
+      <div class="h-figure"><span class="lbl">Frequency</span>${recurringFrequencyLabel(r)}</div>
+      <div class="h-figure"><span class="lbl">Total logged</span>${fmtAmount(totalLogged)}</div>
+      <div class="h-figure"><span class="lbl">Occurrences</span>${r.loggedTx.length}</div>
+      ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${r.nextDueDate}</div>`:''}
+    </div>
+    <div class="h-actions">
+      ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop</button>'}
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="log">☰ Log</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="recurlog-${r.id}" style="display:none;"></div>
+  `;
+  const stopBtn = card.querySelector('[data-action=stop]');
+  if(stopBtn) stopBtn.addEventListener('click', ()=>stopRecurring(r.id));
+  const resumeBtn = card.querySelector('[data-action=resume]');
+  if(resumeBtn) resumeBtn.addEventListener('click', ()=>resumeRecurring(r.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editRecurringInfo(r.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('recurlog-'+r.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteRecurring(r.id));
+
+  const logEl = card.querySelector('.h-log');
+  if(r.loggedTx.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">Nothing logged yet.</span>';
+  }
+  r.loggedTx.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(entry=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Logged ${fmtAmount(entry.amount)} on ${entry.date}</span>`;
+    logEl.appendChild(row);
+  });
+  return card;
+}
+
+function renderRecurringList(){
+  const wrap = document.getElementById('recurringList');
+  const recurring = getRecurring();
+  if(recurring.length===0){
+    wrap.innerHTML = '<div class="empty-state">No recurring expenses logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  const today = todayLocalISO();
+  recurring.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(r=>wrap.appendChild(buildRecurringCard(r, today)));
+}
+function renderRecurringSummary(){
+  const recurring = getRecurring();
+  const active = recurring.filter(r=>r.status==='active');
+  document.getElementById('recurActiveCount').textContent = active.length;
+  document.getElementById('recurMonthlyTotal').textContent = fmtAmount(active.reduce((s,r)=>s+recurringMonthlyEquivalent(r),0));
+  document.getElementById('recurTotalLogged').textContent = fmtAmount(recurring.reduce((s,r)=>s+recurringTotalLogged(r),0));
+}
+function renderRecurring(){
+  syncRecurringExpenses();
+  populateRecurringCategorySelect();
+  renderRecurringList();
+  renderRecurringSummary();
+  renderSummary(); // a newly-logged recurring expense affects income/expense totals too
+  renderList();
+}
+
 // ---------- Collapsible sections (Lending / SIPs / Insurance) ----------
 // Remembered for the browser session (sessionStorage) so collapsing a
 // section you don't use stays collapsed as you keep using the tracker,
@@ -1943,6 +2154,7 @@ function setupCollapsibleSection(headId, arrowId, bodyId, storageKey){
 setupCollapsibleSection('lendingSectionHead','lendingArrow','lendingSectionBody','spendingTracker.collapsed.lending');
 setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
+setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
 setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
 
 function setCurrency(currency){
@@ -1959,6 +2171,7 @@ document.getElementById('currencyIndia').addEventListener('click', ()=>setCurren
 function renderAll(){
   populateMonthFilter();
   populateCategoryFilter();
+  syncRecurringExpenses(); // before the transaction-dependent renders below, so a fresh auto-logged expense shows up right away
   renderSummary();
   renderList();
   renderBudget();
@@ -1970,6 +2183,7 @@ function renderAll(){
   renderLending();
   renderSips();
   renderInsurance();
+  renderRecurring();
 }
 
 // ---------- Data export / import ----------
@@ -2027,6 +2241,11 @@ function mergeNetWorthFromBackup(incomingNW){
       if(!localBucket.insurance) localBucket.insurance = [];
       const existingInsIds = new Set(localBucket.insurance.map(i=>i.id));
       incomingBucket.insurance.forEach(i=>{ if(i.id && !existingInsIds.has(i.id)) localBucket.insurance.push(i); });
+    }
+    if(Array.isArray(incomingBucket.recurringExpenses)){
+      if(!localBucket.recurringExpenses) localBucket.recurringExpenses = [];
+      const existingRecurIds = new Set(localBucket.recurringExpenses.map(r=>r.id));
+      incomingBucket.recurringExpenses.forEach(r=>{ if(r.id && !existingRecurIds.has(r.id)) localBucket.recurringExpenses.push(r); });
     }
   });
   return addedHoldings;
@@ -2352,6 +2571,7 @@ document.getElementById('holdingDate').value = todayLocalISO();
 document.getElementById('lendDate').value = todayLocalISO();
 document.getElementById('sipStartDate').value = todayLocalISO();
 document.getElementById('insBoughtDate').value = todayLocalISO();
+document.getElementById('recurStartDate').value = todayLocalISO();
 renderAll();
 checkBackupReminder();
 
