@@ -82,13 +82,20 @@
 
   /* Summary cards */
   .summary-grid{
-    display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+    display:grid;grid-template-columns:repeat(3,1fr);gap:0;
     border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:36px;
   }
   @media (max-width:800px){ .summary-grid{grid-template-columns:repeat(2,1fr);} }
-  .summary-card{padding:22px 20px;border-right:1px solid var(--rule);}
-  .summary-card:last-child{border-right:none;}
-  @media (max-width:800px){ .summary-card:nth-child(2){border-right:none;} .summary-card:nth-child(odd){border-right:1px solid var(--rule);} }
+  .summary-card{padding:22px 20px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);}
+  .summary-card:nth-child(3n){border-right:none;}
+  .summary-card:nth-last-child(-n+3){border-bottom:none;}
+  @media (max-width:800px){
+    .summary-card{border-right:1px solid var(--rule);}
+    .summary-card:nth-child(3n){border-right:1px solid var(--rule);}
+    .summary-card:nth-child(2n){border-right:none;}
+    .summary-card:nth-last-child(-n+3){border-bottom:1px solid var(--rule);}
+    .summary-card:nth-last-child(-n+2){border-bottom:none;}
+  }
   .summary-card .label{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;}
   .summary-card .value{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;font-size:1.5rem;color:var(--green-deep);}
   .summary-card .value.brick{color:var(--brick);}
@@ -309,7 +316,9 @@
     <div class="summary-card"><div class="label">This month — income</div><div class="value" id="sumMonthIncome">₹0</div></div>
     <div class="summary-card"><div class="label">This month — expenses</div><div class="value brick" id="sumMonthExpense">₹0</div></div>
     <div class="summary-card"><div class="label">This month — net</div><div class="value" id="sumMonthNet">₹0</div></div>
-    <div class="summary-card"><div class="label">All-time balance</div><div class="value" id="sumAllBalance">₹0</div></div>
+    <div class="summary-card"><div class="label">All-time — income</div><div class="value" id="sumAllIncome">₹0</div></div>
+    <div class="summary-card"><div class="label">All-time — expenses</div><div class="value brick" id="sumAllExpense">₹0</div></div>
+    <div class="summary-card"><div class="label">All-time — balance</div><div class="value" id="sumAllBalance">₹0</div></div>
   </div>
 
   <!-- Add + list -->
