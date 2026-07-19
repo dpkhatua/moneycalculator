@@ -193,6 +193,7 @@ function resetForm(){
   document.getElementById('txSubmit').textContent = 'Add transaction';
   document.getElementById('txDate').value = todayLocalISO();
   document.getElementById('txDesc').value = '';
+  document.getElementById('txTag').value = '';
   document.getElementById('txAmount').value = '';
   setType('expense');
 }
@@ -201,6 +202,7 @@ document.getElementById('txSubmit').addEventListener('click', ()=>{
   const date = document.getElementById('txDate').value;
   const category = document.getElementById('txCategory').value;
   const desc = document.getElementById('txDesc').value.trim();
+  const tag = document.getElementById('txTag').value.trim();
   const amount = +document.getElementById('txAmount').value;
 
   if(!date){ alert('Pick a date.'); return; }
@@ -209,9 +211,9 @@ document.getElementById('txSubmit').addEventListener('click', ()=>{
 
   if(editingId){
     const tx = transactions.find(t=>t.id===editingId);
-    if(tx){ Object.assign(tx, {date, type:currentType, category, description:desc, amount, currency:currentCurrency}); }
+    if(tx){ Object.assign(tx, {date, type:currentType, category, description:desc, tag:tag||null, amount, currency:currentCurrency}); }
   } else {
-    transactions.push({ id: uid(), date, type: currentType, category, description: desc, amount, currency: currentCurrency });
+    transactions.push({ id: uid(), date, type: currentType, category, description: desc, tag: tag||null, amount, currency: currentCurrency });
   }
   saveData();
   resetForm();
@@ -225,6 +227,7 @@ function startEdit(id){
   setType(tx.type);
   document.getElementById('txDate').value = tx.date;
   document.getElementById('txDesc').value = tx.description;
+  document.getElementById('txTag').value = tx.tag || '';
   document.getElementById('txAmount').value = tx.amount;
   populateCategorySelect();
   document.getElementById('txCategory').value = tx.category;
@@ -272,19 +275,37 @@ function populateCategoryFilter(){
   });
   if(prevValue) sel.value = prevValue;
 }
+function populateTagFilter(){
+  const sel = document.getElementById('filterTag');
+  const prevValue = sel.value;
+  const tags = [...new Set(txInCurrentCurrency().map(t=>t.tag).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All tags</option>';
+  tags.forEach(tag=>{
+    const opt = document.createElement('option');
+    opt.value = tag; opt.textContent = tag;
+    sel.appendChild(opt);
+  });
+  if(prevValue) sel.value = prevValue;
+  // Also keep the "add transaction" tag field's autocomplete suggestions fresh.
+  const datalist = document.getElementById('txTagOptions');
+  datalist.innerHTML = tags.map(tag=>`<option value="${escapeHtml(tag)}">`).join('');
+}
 document.getElementById('filterMonth').addEventListener('change', renderAll);
 document.getElementById('filterType').addEventListener('change', renderAll);
 document.getElementById('filterCategory').addEventListener('change', renderAll);
+document.getElementById('filterTag').addEventListener('change', renderAll);
 
 function getFilteredTx(){
   const month = document.getElementById('filterMonth').value;
   const type = document.getElementById('filterType').value;
   const cat = document.getElementById('filterCategory').value;
+  const tag = document.getElementById('filterTag').value;
   return transactions.filter(t=>{
     if(t.currency !== currentCurrency) return false;
     if(month!=='__all__' && monthKey(t.date)!==month) return false;
     if(type && t.type!==type) return false;
     if(cat && t.category!==cat) return false;
+    if(tag && t.tag!==tag) return false;
     return true;
   });
 }
@@ -341,7 +362,7 @@ function renderList(){
     row.innerHTML = `
       <div class="tx-date">${escapeHtml(dateLabel)}</div>
       <div class="tx-main">
-        <span class="tx-cat">${escapeHtml(t.category)}</span>
+        <span class="tx-cat">${escapeHtml(t.category)}${t.tag?' · '+escapeHtml(t.tag):''}</span>
         <span class="tx-desc">${escapeHtml(t.description) || '—'}</span>
       </div>
       <div class="tx-amt ${t.type}">${t.type==='expense' ? '−' : '+'}${fmtAmount(t.amount, t.currency)}</div>
@@ -471,6 +492,45 @@ function renderMonthlyCategoryTable(){
     html += `<tr><td>${label}</td>${cells}<td class="num" style="font-weight:600;">${fmtAmount(monthTotal)}</td></tr>`;
   });
   html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderTagBreakdown(){
+  const wrap = document.getElementById('tagBreakdownTable');
+  const expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense' && t.tag);
+  if(expenseTx.length===0){
+    wrap.innerHTML = '<div class="empty-state">No tagged transactions yet — add a tag when logging a transaction (e.g. a person or household name).</div>';
+    return;
+  }
+  const byTag = {};
+  expenseTx.forEach(t=>{ byTag[t.tag] = (byTag[t.tag]||0) + t.amount; });
+  const tags = Object.keys(byTag).sort((a,b)=>byTag[b]-byTag[a]);
+  const total = tags.reduce((s,t)=>s+byTag[t],0);
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Tag</th><th style="text-align:right;">Total spent</th><th style="text-align:right;">% of tagged spending</th></tr></thead>
+      <tbody>
+  `;
+  tags.forEach(tag=>{
+    const amt = byTag[tag];
+    const pct = total>0 ? (amt/total)*100 : 0;
+    html += `
+      <tr>
+        <td>${escapeHtml(tag)}</td>
+        <td class="num">${fmtAmount(amt)}</td>
+        <td class="num">${pct.toFixed(1)}%</td>
+      </tr>
+    `;
+  });
+  html += `
+      <tr class="total-row">
+        <td>Total</td>
+        <td class="num">${fmtAmount(total)}</td>
+        <td class="num">100%</td>
+      </tr>
+    </tbody></table>
+  `;
   wrap.innerHTML = html;
 }
 
@@ -2203,6 +2263,7 @@ document.getElementById('currencyIndia').addEventListener('click', ()=>setCurren
 function renderAll(){
   populateMonthFilter();
   populateCategoryFilter();
+  populateTagFilter();
   syncRecurringExpenses(); // before the transaction-dependent renders below, so a fresh auto-logged expense shows up right away
   renderSummary();
   renderList();
@@ -2211,6 +2272,7 @@ function renderAll(){
   renderTrendChart();
   renderYearlyStats();
   renderMonthlyCategoryTable();
+  renderTagBreakdown();
   syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
   renderNetWorth();
   renderLending();
