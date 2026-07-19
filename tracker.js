@@ -345,6 +345,20 @@ function renderSummary(){
 function escapeHtml(str){
   return String(str==null?'':str).replace(/[&<>"']/g, (m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
+// Flags transactions that share the same date, type, category, description,
+// and amount as another one — a strong signal of an accidental duplicate
+// (e.g. importing the same backup twice), without ever auto-deleting anything.
+function findDuplicateTxIds(){
+  const groups = {};
+  txInCurrentCurrency().forEach(t=>{
+    const key = [t.date, t.type, t.category, (t.description||'').trim().toLowerCase(), t.amount].join('|');
+    (groups[key] = groups[key] || []).push(t.id);
+  });
+  const dupIds = new Set();
+  Object.values(groups).forEach(ids=>{ if(ids.length>1) ids.forEach(id=>dupIds.add(id)); });
+  return dupIds;
+}
+
 function renderList(){
   const list = document.getElementById('txList');
   const filtered = getFilteredTx().slice().sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -353,16 +367,18 @@ function renderList(){
     list.innerHTML = '<div class="empty-state">Nothing logged for this filter yet. Add a transaction on the left to get started.</div>';
     return;
   }
+  const dupIds = findDuplicateTxIds();
   list.innerHTML = '';
   filtered.forEach(t=>{
     const row = document.createElement('div');
     row.className = 'tx-row';
     const d = parseLocalDate(t.date);
     const dateLabel = d.toLocaleDateString('en-IN', {day:'2-digit', month:'short'});
+    const isDup = dupIds.has(t.id);
     row.innerHTML = `
       <div class="tx-date">${escapeHtml(dateLabel)}</div>
       <div class="tx-main">
-        <span class="tx-cat">${escapeHtml(t.category)}${t.tag?' · '+escapeHtml(t.tag):''}</span>
+        <span class="tx-cat">${escapeHtml(t.category)}${t.tag?' · '+escapeHtml(t.tag):''}${isDup?' <span class="dup-badge" title="Same date, amount, category, and description as another transaction — check it is not a duplicate">⚠ possible duplicate</span>':''}</span>
         <span class="tx-desc">${escapeHtml(t.description) || '—'}</span>
       </div>
       <div class="tx-amt ${t.type}">${t.type==='expense' ? '−' : '+'}${fmtAmount(t.amount, t.currency)}</div>
@@ -1076,10 +1092,17 @@ function buildHoldingCard(h, today){
   // Build the buy/sell log with per-entry edit/delete controls (done as real
   // DOM nodes, not string-joined text, so each entry can carry its own buttons).
   const logEl = card.querySelector('.h-log');
+  const lotDupCounts = {};
   h.lots.forEach(l=>{
+    const key = [l.date, l.quantity, l.price].join('|');
+    lotDupCounts[key] = (lotDupCounts[key]||0)+1;
+  });
+  h.lots.forEach(l=>{
+    const key = [l.date, l.quantity, l.price].join('|');
+    const isDup = lotDupCounts[key] > 1;
     const row = document.createElement('div');
     row.className = 'log-row';
-    row.innerHTML = `<span>Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}</span>`;
+    row.innerHTML = `<span>Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}${isDup?' <span class="dup-badge" title="Another buy on this holding has the same date, quantity, and price">⚠ possible duplicate</span>':''}</span>`;
     const editBtn = document.createElement('button');
     editBtn.textContent = '✎';
     editBtn.title = 'Edit this entry';
@@ -2015,6 +2038,49 @@ function renderInsurance(){
   renderInsuranceSummary();
 }
 
+// ---------- Upcoming due-date notifications ----------
+// SIPs and recurring expenses: warn 5 days out. Insurance: warn a full month
+// out, since premiums are usually bigger and less convenient to scramble for.
+function renderNotifications(){
+  const wrap = document.getElementById('upcomingNotifications');
+  const today = todayLocalISO();
+  const items = [];
+
+  getSips().forEach(sip=>{
+    if(sip.status!=='active') return;
+    const days = daysBetween(today, sip.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, kind:'sip', text:`SIP "${sip.name}" — ${fmtAmount(sip.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${sip.nextDueDate})` });
+    }
+  });
+  getRecurring().forEach(r=>{
+    if(r.status!=='active') return;
+    const days = daysBetween(today, r.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, kind:'recurring', text:`Recurring "${r.name}" — ${fmtAmount(r.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${r.nextDueDate})` });
+    }
+  });
+  getInsurance().forEach(ins=>{
+    if(ins.status==='lapsed') return;
+    const days = daysBetween(today, ins.nextDueDate);
+    if(days>=0 && days<=30){
+      items.push({ days, kind:'insurance', text:`Insurance "${ins.name}" premium — ${fmtAmount(ins.premiumAmount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${ins.nextDueDate})` });
+    }
+  });
+
+  if(items.length===0){ wrap.style.display='none'; wrap.innerHTML=''; return; }
+  items.sort((a,b)=>a.days-b.days);
+  let html = `<div class="notify-banner"><div class="notify-title">🔔 Coming up (${currentCurrency})</div>`;
+  items.forEach(item=>{
+    const soon = item.days>5; // only insurance items can be in the 6-30 day range
+    const whenLabel = item.days===0 ? 'TODAY' : item.days+'d';
+    html += `<div class="notify-row"><span class="notify-when${soon?' soon':''}">${whenLabel}</span><span>${escapeHtml(item.text)}</span></div>`;
+  });
+  html += '</div>';
+  wrap.style.display = '';
+  wrap.innerHTML = html;
+}
+
 // ---------- Recurring Expenses ("Definite Spending") ----------
 // Same idea as SIPs, but for expenses: fires automatically on schedule and
 // logs a real transaction each time, so it shows up in your normal spending
@@ -2279,6 +2345,7 @@ function renderAll(){
   renderSips();
   renderInsurance();
   renderRecurring();
+  renderNotifications();
 }
 
 // ---------- Data export / import ----------
