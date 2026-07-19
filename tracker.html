@@ -375,6 +375,11 @@
         <input type="text" id="txDesc" placeholder="e.g. Groceries, Uber, Salary" maxlength="200">
       </div>
       <div class="field">
+        <label>Tag <span style="font-weight:400;color:var(--ink-soft);">(optional — who/what it's for)</span></label>
+        <input type="text" id="txTag" placeholder="e.g. Dipu, Home, Roji" maxlength="60" list="txTagOptions">
+        <datalist id="txTagOptions"></datalist>
+      </div>
+      <div class="field">
         <label>Amount <span id="txAmountCurrency" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;color:var(--ink);">₹</span></label>
         <input type="number" id="txAmount" min="0" step="1" placeholder="0">
       </div>
@@ -390,6 +395,7 @@
           <option value="expense">Expenses only</option>
         </select>
         <select id="filterCategory"><option value="">All categories</option></select>
+        <select id="filterTag"><option value="">All tags</option></select>
         <span class="spacer"></span>
         <span id="txCount" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;color:var(--ink-soft);"></span>
       </div>
@@ -452,6 +458,11 @@
   <div style="overflow-x:auto;margin-bottom:44px;">
     <div id="monthlyCategoryTable" style="min-width:600px;"></div>
   </div>
+
+  <!-- Spending by Tag -->
+  <div class="section-head"><h2>Spending by tag</h2></div>
+  <p class="section-desc">If you tag transactions with who or what they're for (e.g. a person, a household, a trip), see totals per tag here. Untagged transactions aren't included.</p>
+  <div id="tagBreakdownTable" style="margin-bottom:44px;"></div>
 
   <!-- Net Worth -->
   <div class="section-head"><h2>Net worth</h2></div>
