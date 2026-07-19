@@ -1180,14 +1180,62 @@ function renderNWTotals(){
   const totalInvested = holdings.reduce((s,h)=>s+holdingInvested(h),0);
   const totalCurrent = holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
   const totalRealized = holdings.reduce((s,h)=>s+holdingRealizedPL(h),0);
-  const gain = totalCurrent - totalInvested;
+  const gain = totalCurrent - totalInvested; // unrealized only
+  const totalProfit = gain + totalRealized;
+
   document.getElementById('nwTotalInvested').textContent = fmtAmount(totalInvested);
   document.getElementById('nwTotalCurrent').textContent = fmtAmount(totalCurrent);
   const gainEl = document.getElementById('nwGainLoss');
   const gainPct = totalInvested>0 ? (gain/totalInvested)*100 : 0;
-  gainEl.textContent = (gain>=0?'+':'')+fmtAmount(gain)+' ('+gainPct.toFixed(1)+'%)'+(totalRealized!==0?' · realized '+(totalRealized>=0?'+':'')+fmtAmount(totalRealized):'');
+  gainEl.textContent = (gain>=0?'+':'')+fmtAmount(gain)+' ('+gainPct.toFixed(1)+'%)';
   gainEl.style.color = gain<0 ? 'var(--brick)' : 'var(--green-deep)';
+
+  const thisMonth = thisMonthLocal();
+  const thisYear = todayLocalISO().slice(0,4);
+  const monthInvested = holdings.reduce((s,h)=> s + h.lots.filter(l=>monthKey(l.date)===thisMonth).reduce((s2,l)=>s2+l.quantity*l.price,0), 0);
+  const yearInvested = holdings.reduce((s,h)=> s + h.lots.filter(l=>l.date.slice(0,4)===thisYear).reduce((s2,l)=>s2+l.quantity*l.price,0), 0);
+  document.getElementById('nwInvestedThisMonth').textContent = fmtAmount(monthInvested);
+  document.getElementById('nwInvestedThisYear').textContent = fmtAmount(yearInvested);
+
+  const realizedEl = document.getElementById('nwRealizedTotal');
+  realizedEl.textContent = (totalRealized>=0?'+':'')+fmtAmount(totalRealized);
+  realizedEl.style.color = totalRealized<0 ? 'var(--brick)' : 'var(--green-deep)';
+
+  const profitEl = document.getElementById('nwTotalProfit');
+  profitEl.textContent = (totalProfit>=0?'+':'')+fmtAmount(totalProfit);
+  profitEl.style.color = totalProfit<0 ? 'var(--brick)' : 'var(--green-deep)';
+
   return totalCurrent;
+}
+
+function renderInvestYearlyTable(){
+  const wrap = document.getElementById('investYearlyTable');
+  const holdings = getNW().holdings;
+  const allLots = holdings.flatMap(h=>h.lots.map(l=>({year: l.date.slice(0,4), amount: l.quantity*l.price})));
+  const allSells = holdings.flatMap(h=>(h.sells||[]).map(s=>({year: s.date.slice(0,4), pl: s.realizedPL})));
+  const years = [...new Set([...allLots.map(l=>l.year), ...allSells.map(s=>s.year)])].sort().reverse();
+  if(years.length===0){
+    wrap.innerHTML = '<div class="empty-state">No investment activity logged yet.</div>';
+    return;
+  }
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Year</th><th style="text-align:right;">Invested</th><th style="text-align:right;">Realized P&amp;L</th></tr></thead>
+      <tbody>
+  `;
+  years.forEach(year=>{
+    const invested = allLots.filter(l=>l.year===year).reduce((s,l)=>s+l.amount,0);
+    const realized = allSells.filter(s=>s.year===year).reduce((s,x)=>s+x.pl,0);
+    html += `
+      <tr>
+        <td>${year}</td>
+        <td class="num">${fmtAmount(invested)}</td>
+        <td class="num ${realized<0?'loss':'gain'}">${realized>=0?'+':''}${fmtAmount(realized)}</td>
+      </tr>
+    `;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
 }
 
 const ASSET_CLASS_PALETTE = ['#1F6F50','#C98A2C','#A2452F','#4B5A50','#7a9e8f','#d9b06b','#c47a68','#8fa89d','#3d6b8a','#6b5b95','#88a09e'];
@@ -1292,6 +1340,7 @@ function renderNWSummary(investmentValue){
 function renderNetWorth(){
   renderHoldingsList();
   const investmentValue = renderNWTotals();
+  renderInvestYearlyTable();
   renderHoldingsChart();
   renderCategoryBreakdownTable();
   renderNWSummary(investmentValue);
