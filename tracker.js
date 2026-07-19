@@ -442,6 +442,38 @@ function renderYearlyStats(){
   wrap.innerHTML = html;
 }
 
+function renderMonthlyCategoryTable(){
+  const wrap = document.getElementById('monthlyCategoryTable');
+  const expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense');
+  if(expenseTx.length===0){
+    wrap.innerHTML = '<div class="empty-state">No expenses logged yet.</div>';
+    return;
+  }
+  // Months present, most recent first; categories actually used, alphabetical.
+  const months = [...new Set(expenseTx.map(t=>monthKey(t.date)))].sort().reverse();
+  const cats = [...new Set(expenseTx.map(t=>t.category))].sort();
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Month</th>${cats.map(c=>`<th style="text-align:right;">${escapeHtml(c)}</th>`).join('')}<th style="text-align:right;">Total</th></tr></thead>
+      <tbody>
+  `;
+  months.forEach(m=>{
+    const monthTx = expenseTx.filter(t=>monthKey(t.date)===m);
+    const [y,mo] = m.split('-');
+    const label = new Date(y, mo-1, 1).toLocaleString('en-IN', {month:'short', year:'numeric'});
+    let monthTotal = 0;
+    const cells = cats.map(cat=>{
+      const sum = monthTx.filter(t=>t.category===cat).reduce((s,t)=>s+t.amount,0);
+      monthTotal += sum;
+      return `<td class="num">${sum>0?fmtAmount(sum):'—'}</td>`;
+    }).join('');
+    html += `<tr><td>${label}</td>${cells}<td class="num" style="font-weight:600;">${fmtAmount(monthTotal)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
 // ---------- Budget Plan ----------
 function getBudgets(){ return budgets[currentCurrency]; }
 
@@ -2178,6 +2210,7 @@ function renderAll(){
   renderCategoryChart();
   renderTrendChart();
   renderYearlyStats();
+  renderMonthlyCategoryTable();
   syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
   renderNetWorth();
   renderLending();
