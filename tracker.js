@@ -1,8 +1,10 @@
+
 const STORAGE_KEY = 'spendingTracker.transactions.v1';
 const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
 const NETWORTH_KEY = 'spendingTracker.netWorth.v1';
 const BUDGET_KEY = 'spendingTracker.budgets.v1';
+const DELETED_KEY = 'spendingTracker.deletedIds.v1';
 
 const DEFAULT_CATEGORIES = {
   expense: ['Food','Transport','Housing','Utilities','Shopping','Entertainment','Health','Education','Other'],
@@ -30,6 +32,13 @@ let transactions = [];
 let categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
 let netWorthData = { INR: emptyNetWorthBucket(), USD: emptyNetWorthBucket() };
 let budgets = { INR: {}, USD: {} }; // { category: monthlyBudgetAmount }, per currency
+// Tombstones — IDs of anything you've explicitly deleted (transactions,
+// holdings, lending records, SIPs, insurance, recurring expenses). Checked
+// during every merge (import / Drive restore) so a deletion can never be
+// silently undone by an older backup that still has the item in it.
+let deletedIds = new Set();
+function markDeleted(id){ if(id) deletedIds.add(id); }
+function isDeleted(id){ return deletedIds.has(id); }
 let currentType = 'expense';
 let editingId = null;
 // currentCurrency is the single "which country am I looking at" lens: it decides
@@ -120,6 +129,10 @@ function loadData(){
     const parsedBudget = rawBudget ? JSON.parse(rawBudget) : null;
     budgets = { INR: (parsedBudget && parsedBudget.INR) || {}, USD: (parsedBudget && parsedBudget.USD) || {} };
   } catch(e){ budgets = { INR: {}, USD: {} }; }
+  try{
+    const rawDeleted = localStorage.getItem(DELETED_KEY);
+    deletedIds = new Set(rawDeleted ? JSON.parse(rawDeleted) : []);
+  } catch(e){ deletedIds = new Set(); }
   // Migration: transactions logged before multi-currency support have no
   // currency field — treat them as INR, since that was the only option then.
   let migrated = false;
@@ -132,6 +145,7 @@ function persistLocal(){
     localStorage.setItem(CATEGORY_KEY, JSON.stringify(categories));
     localStorage.setItem(NETWORTH_KEY, JSON.stringify(netWorthData));
     localStorage.setItem(BUDGET_KEY, JSON.stringify(budgets));
+    localStorage.setItem(DELETED_KEY, JSON.stringify([...deletedIds]));
   } catch(e){
     alert('Could not save — your browser storage may be full or blocked (e.g. private browsing mode).');
   }
@@ -237,6 +251,7 @@ function startEdit(id){
 }
 function deleteTx(id){
   if(!confirm('Delete this transaction? This can\'t be undone.')) return;
+  markDeleted(id);
   transactions = transactions.filter(t=>t.id!==id);
   saveData();
   renderAll();
@@ -843,6 +858,7 @@ function deleteHolding(id){
   const h = getNW().holdings.find(x=>x.id===id);
   if(!h) return;
   if(!confirm(`Delete "${h.name}" entirely, including its buy/sell history? This can't be undone.`)) return;
+  markDeleted(id);
   getNW().holdings = getNW().holdings.filter(x=>x.id!==id);
   saveData();
   renderNetWorth();
@@ -1514,6 +1530,7 @@ function deleteLendingPerson(id){
   const l = getLending().find(x=>x.id===id);
   if(!l) return;
   if(!confirm(`Delete the entire record for "${l.name}", including all loans and repayments? This can't be undone.`)) return;
+  markDeleted(id);
   getNW().lending = getLending().filter(x=>x.id!==id);
   saveData();
   renderLending();
@@ -1761,6 +1778,7 @@ function deleteSip(id){
   const sip = getSips().find(x=>x.id===id);
   if(!sip) return;
   if(!confirm(`Delete "${sip.name}" entirely, including its installment history? This can't be undone.`)) return;
+  markDeleted(id);
   getNW().sips = getSips().filter(x=>x.id!==id);
   saveData();
   renderSips();
@@ -1989,6 +2007,7 @@ function deleteInsurance(id){
   const ins = getInsurance().find(x=>x.id===id);
   if(!ins) return;
   if(!confirm(`Delete "${ins.name}" entirely, including its payment history? This can't be undone.`)) return;
+  markDeleted(id);
   getNW().insurance = getInsurance().filter(x=>x.id!==id);
   saveData();
   renderInsurance();
@@ -2248,8 +2267,10 @@ function deleteRecurring(id){
   const removeTx = confirm(`Delete "${r.name}"? Click OK to also remove the ${r.loggedTx.length} transaction(s) it already logged, or Cancel to keep those transactions and just stop future ones.`);
   if(removeTx){
     const loggedIds = new Set(r.loggedTx.map(l=>l.id));
+    loggedIds.forEach(markDeleted);
     transactions = transactions.filter(t=>!loggedIds.has(t.id));
   }
+  markDeleted(id);
   getNW().recurringExpenses = getRecurring().filter(x=>x.id!==id);
   saveData();
   renderAll();
@@ -2406,6 +2427,24 @@ function downloadBlob(filename, content, mime){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+// When another device deletes something and its tombstone reaches us via
+// import/restore, this both remembers that deletion locally (so we never
+// re-add it ourselves later) and removes it here right now if it's still
+// sitting in our own local data — makes deletions travel both directions.
+function applyIncomingTombstones(incomingDeletedIds){
+  if(!Array.isArray(incomingDeletedIds) || incomingDeletedIds.length===0) return;
+  incomingDeletedIds.forEach(id=>deletedIds.add(id));
+  transactions = transactions.filter(t=>!isDeleted(t.id));
+  ['INR','USD'].forEach(cur=>{
+    const bucket = netWorthData[cur];
+    bucket.holdings = bucket.holdings.filter(h=>!isDeleted(h.id));
+    bucket.lending = bucket.lending.filter(l=>!isDeleted(l.id));
+    bucket.sips = bucket.sips.filter(s=>!isDeleted(s.id));
+    bucket.insurance = bucket.insurance.filter(i=>!isDeleted(i.id));
+    bucket.recurringExpenses = bucket.recurringExpenses.filter(r=>!isDeleted(r.id));
+  });
+}
+
 function mergeNetWorthFromBackup(incomingNW){
   if(!incomingNW) return 0;
   let addedHoldings = 0;
@@ -2417,7 +2456,7 @@ function mergeNetWorthFromBackup(incomingNW){
       const existingIds = new Set(localBucket.holdings.map(h=>h.id));
       incomingBucket.holdings.forEach(raw=>{
         const h = migrateHolding(raw);
-        if(h.id && !existingIds.has(h.id)){ localBucket.holdings.push(h); addedHoldings++; }
+        if(h.id && !existingIds.has(h.id) && !isDeleted(h.id)){ localBucket.holdings.push(h); addedHoldings++; }
       });
     }
     // Old-format backups may still have flatAssets (Real Estate/Vehicles/Other
@@ -2440,30 +2479,30 @@ function mergeNetWorthFromBackup(incomingNW){
       const existingLendIds = new Set(localBucket.lending.map(l=>l.id));
       incomingBucket.lending.forEach(raw=>{
         const l = migrateLending(raw);
-        if(l.id && !existingLendIds.has(l.id)) localBucket.lending.push(l);
+        if(l.id && !existingLendIds.has(l.id) && !isDeleted(l.id)) localBucket.lending.push(l);
       });
     }
     if(Array.isArray(incomingBucket.sips)){
       if(!localBucket.sips) localBucket.sips = [];
       const existingSipIds = new Set(localBucket.sips.map(s=>s.id));
-      incomingBucket.sips.forEach(s=>{ if(s.id && !existingSipIds.has(s.id)) localBucket.sips.push(s); });
+      incomingBucket.sips.forEach(s=>{ if(s.id && !existingSipIds.has(s.id) && !isDeleted(s.id)) localBucket.sips.push(s); });
     }
     if(Array.isArray(incomingBucket.insurance)){
       if(!localBucket.insurance) localBucket.insurance = [];
       const existingInsIds = new Set(localBucket.insurance.map(i=>i.id));
-      incomingBucket.insurance.forEach(i=>{ if(i.id && !existingInsIds.has(i.id)) localBucket.insurance.push(i); });
+      incomingBucket.insurance.forEach(i=>{ if(i.id && !existingInsIds.has(i.id) && !isDeleted(i.id)) localBucket.insurance.push(i); });
     }
     if(Array.isArray(incomingBucket.recurringExpenses)){
       if(!localBucket.recurringExpenses) localBucket.recurringExpenses = [];
       const existingRecurIds = new Set(localBucket.recurringExpenses.map(r=>r.id));
-      incomingBucket.recurringExpenses.forEach(r=>{ if(r.id && !existingRecurIds.has(r.id)) localBucket.recurringExpenses.push(r); });
+      incomingBucket.recurringExpenses.forEach(r=>{ if(r.id && !existingRecurIds.has(r.id) && !isDeleted(r.id)) localBucket.recurringExpenses.push(r); });
     }
   });
   return addedHoldings;
 }
 
 document.getElementById('exportJson').addEventListener('click', ()=>{
-  const payload = { transactions, categories, netWorthData, budgets, exportedAt: new Date().toISOString() };
+  const payload = { transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], exportedAt: new Date().toISOString() };
   downloadBlob('spending-tracker-backup-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(payload, null, 2), 'application/json');
   localStorage.setItem('spendingTracker.lastExport', Date.now().toString());
   document.getElementById('backupReminder').style.display = 'none';
@@ -2485,8 +2524,9 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
       const incoming = Array.isArray(data.transactions) ? data.transactions : [];
       const nwCount = data.netWorthData ? Object.values(data.netWorthData).reduce((s,b)=>s+(Array.isArray(b.holdings)?b.holdings.length:0),0) : 0;
       if(!confirm(`Import ${incoming.length} transaction(s)${nwCount?` and up to ${nwCount} holding(s)`:''}? This will be merged with what's already here (duplicates by ID are skipped; asset/liability totals will be overwritten by the imported file).`)) return;
+      applyIncomingTombstones(data.deletedIds);
       const existingIds = new Set(transactions.map(t=>t.id));
-      incoming.forEach(t=>{ if(t.id && !existingIds.has(t.id)){ if(!t.currency) t.currency='INR'; transactions.push(t); } });
+      incoming.forEach(t=>{ if(t.id && !existingIds.has(t.id) && !isDeleted(t.id)){ if(!t.currency) t.currency='INR'; transactions.push(t); } });
       if(data.categories){
         ['income','expense'].forEach(type=>{
           if(Array.isArray(data.categories[type])){
@@ -2672,7 +2712,7 @@ async function pushToDrive(silent){
   try{
     driveSyncing = true;
     if(silent) setDriveStatus('Syncing to Drive…', true);
-    const payload = JSON.stringify({ transactions, categories, netWorthData, budgets, exportedAt: new Date().toISOString() }, null, 2);
+    const payload = JSON.stringify({ transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], exportedAt: new Date().toISOString() }, null, 2);
     const existing = await findDriveFile();
     const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
     const boundary = 'ledgerboundary' + Date.now();
@@ -2722,10 +2762,11 @@ async function pullFromDrive(silent){
       return;
     }
     const data = await res.json();
+    applyIncomingTombstones(data.deletedIds);
     const incoming = Array.isArray(data.transactions) ? data.transactions : [];
     const existingIds = new Set(transactions.map(t=>t.id));
     let added = 0;
-    incoming.forEach(t=>{ if(t.id && !existingIds.has(t.id)){ if(!t.currency) t.currency='INR'; transactions.push(t); added++; } });
+    incoming.forEach(t=>{ if(t.id && !existingIds.has(t.id) && !isDeleted(t.id)){ if(!t.currency) t.currency='INR'; transactions.push(t); added++; } });
     if(data.categories){
       ['income','expense'].forEach(type=>{
         if(Array.isArray(data.categories[type])) data.categories[type].forEach(c=>{ if(!categories[type].includes(c)) categories[type].push(c); });
