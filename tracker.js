@@ -1,4 +1,3 @@
-
 const STORAGE_KEY = 'spendingTracker.transactions.v1';
 const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
@@ -1742,11 +1741,25 @@ function editSipInfo(id){
   if(newAmt===null) return;
   const amt = +newAmt;
   if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
-  const newLinked = prompt('Linked to (optional):', sip.linkedHolding||'');
-  if(newLinked===null) return;
+
+  // Let them (re)link to a real holding — this is what actually makes future
+  // installments post as buys into that holding's invested amount. Typing a
+  // holding's number here fixes SIPs created before this linking existed, or
+  // ones where "— none —" was picked originally.
+  const holdings = getNW().holdings;
+  const currentIndex = sip.linkedHoldingId ? holdings.findIndex(h=>h.id===sip.linkedHoldingId) : -1;
+  const list = holdings.map((h,i)=>`${i+1}. ${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`).join('\n');
+  const linkRaw = holdings.length===0
+    ? null
+    : prompt(`Link to a holding, so future installments auto-invest into it.\nEnter a number, or 0 for none:\n\n0. — none —\n${list}`, currentIndex>=0 ? String(currentIndex+2) : '0');
+
   sip.name = newName.trim();
   sip.amount = amt;
-  sip.linkedHolding = newLinked.trim() || null;
+  if(linkRaw!==null){
+    const linkNum = parseInt(linkRaw, 10);
+    sip.linkedHoldingId = (!isNaN(linkNum) && linkNum>=1 && linkNum<=holdings.length) ? holdings[linkNum-1].id : null;
+    sip.linkedHolding = null; // clear the old legacy text label now that it's properly linked (or explicitly unlinked)
+  }
   saveData();
   renderSips();
 }
