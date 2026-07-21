@@ -1761,8 +1761,18 @@ function syncSipInstallments(){
       if(sip.linkedHoldingId){
         const holding = getNW().holdings.find(h=>h.id===sip.linkedHoldingId);
         if(holding){
-          holding.lots.push({ id: nwUid(), date: installmentDate, quantity: 1, price: sip.amount, note: `SIP: ${sip.name}` });
-          holding.currentPrice = holding.currentPrice || sip.amount;
+          if(isSimpleValueClass(holding.assetClass)){
+            // MF/Liquid Fund/Gold/etc. must always stay as exactly one lot —
+            // add the installment to that lot's invested amount. Current
+            // value is intentionally left alone; you update that yourself.
+            if(holding.lots.length===0) holding.lots.push({ id: nwUid(), date: installmentDate, quantity:1, price:0, note:null });
+            holding.lots[0].price += sip.amount;
+            holding.lots[0].date = installmentDate;
+            holding.lots[0].note = `SIP: ${sip.name}`;
+          } else {
+            // Share-based holdings (Equity/US Stocks/Crypto) keep real per-buy lots.
+            holding.lots.push({ id: nwUid(), date: installmentDate, quantity: 1, price: sip.amount, note: `SIP: ${sip.name}` });
+          }
         }
       }
       sip.nextDueDate = advanceDate(sip.nextDueDate, sip.frequencyUnit, sip.frequencyValue);
