@@ -3195,54 +3195,13 @@ let gsiClient = null;
 let driveAccessToken = null;
 let driveTokenExpiry = 0;
 
-function loadGoogleClientId(){ return localStorage.getItem('spendingTracker.googleClientId') || ''; }
-function saveGoogleClientId(id){ localStorage.setItem('spendingTracker.googleClientId', id); }
-
-// If this page was opened via a "setup link" (tracker.html?clientId=...),
-// auto-fill and save it — this is how a second device gets set up with one
-// tap instead of copy-pasting the Client ID by hand. The Client ID itself
-// isn't a secret (unlike a password or the OAuth Client Secret), so putting
-// it in a URL you share with yourself (e.g. via your own Notes app or a
-// message to yourself) is safe.
-(function autoFillClientIdFromUrl(){
-  const params = new URLSearchParams(window.location.search);
-  const fromUrl = params.get('clientId');
-  if(fromUrl && fromUrl.trim()){
-    saveGoogleClientId(fromUrl.trim());
-    // Remove it from the visible URL/history once saved, so it doesn't
-    // linger in browser history or get accidentally shared again.
-    params.delete('clientId');
-    const cleanUrl = window.location.pathname + (params.toString() ? '?'+params.toString() : '');
-    window.history.replaceState({}, '', cleanUrl);
-  }
-})();
-
-document.getElementById('googleClientIdInput').value = loadGoogleClientId();
-document.getElementById('saveClientId').addEventListener('click', ()=>{
-  const id = document.getElementById('googleClientIdInput').value.trim();
-  saveGoogleClientId(id);
-  gsiClient = null; // force re-init with new client id
-  if(id){
-    setDriveStatus('Client ID saved — preparing Google Sign-In…');
-    loadGsiScript(()=>{
-      initGsi();
-      setDriveStatus('Ready. Click Connect Google Drive.');
-    });
-  } else {
-    setDriveStatus('Not connected');
-  }
-});
-document.getElementById('copySetupLink').addEventListener('click', async ()=>{
-  const id = loadGoogleClientId();
-  if(!id){ alert('Save a Client ID first, then copy the setup link.'); return; }
-  const url = window.location.origin + window.location.pathname + '?clientId=' + encodeURIComponent(id);
-  try{
-    await navigator.clipboard.writeText(url);
-    alert('Setup link copied! Send it to yourself (e.g. your own Notes app or a message to yourself) and open it on your other device — it\u2019ll auto-fill the Client ID there.');
-  } catch(e){
-    prompt('Copy this link and open it on your other device:', url);
-  }
-});
+// The OAuth Client ID — set once here, works on every device automatically.
+// This is a public identifier (Google's own docs call it non-secret), so
+// there's nothing sensitive about it living in this file. Who can actually
+// sign in is controlled entirely by the "Test users" list on the OAuth
+// consent screen in Google Cloud Console — add a Gmail address there to let
+// that person sync to their own Drive using this same Client ID.
+const GOOGLE_CLIENT_ID = '383914037063-7j0fpcpltj1dlvglhrsn27inf1h9juff.apps.googleusercontent.com';
 
 function setDriveStatus(text, connected){
   const el = document.getElementById('driveStatus');
@@ -3263,10 +3222,9 @@ function loadGsiScript(cb){
 }
 
 function initGsi(){
-  const clientId = loadGoogleClientId();
-  if(!clientId || !window.google) return false;
+  if(!window.google) return false;
   gsiClient = google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
+    client_id: GOOGLE_CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/drive.file openid email',
     callback: () => {} // overwritten per-call below
   });
@@ -3274,8 +3232,6 @@ function initGsi(){
 }
 
 function requestDriveToken(onGranted){
-  const clientId = loadGoogleClientId();
-  if(!clientId){ alert('Paste your Google OAuth Client ID above first, then click Save.'); return; }
   // Fast path: script + client already prepared (the common case) — call
   // requestAccessToken() synchronously within this click so the browser
   // still treats the popup as user-initiated and doesn't silently block it.
@@ -3296,7 +3252,7 @@ function requestDriveToken(onGranted){
   // same-tick user gesture — tell the person to click Connect once more.
   setDriveStatus('Preparing Google Sign-In — click Connect Google Drive once more…');
   loadGsiScript(()=>{
-    if(!initGsi()){ setDriveStatus('Could not start Google Sign-In. Double check your Client ID.'); return; }
+    if(!initGsi()){ setDriveStatus('Could not start Google Sign-In.'); return; }
     setDriveStatus('Ready — click Connect Google Drive again.');
   });
 }
@@ -3318,12 +3274,9 @@ function ensureToken(cb){
 
 document.getElementById('connectDrive').addEventListener('click', ()=> requestDriveToken());
 
-// If a Client ID was already saved in a previous session, preload the
-// sign-in script right away so the very first Connect click this session
-// still works on the first try.
-if(loadGoogleClientId()){
-  loadGsiScript(()=>{ initGsi(); setDriveStatus('Ready. Click Connect Google Drive.'); });
-}
+// Preload the sign-in script right away so the very first Connect click
+// this session still works on the first try.
+loadGsiScript(()=>{ initGsi(); setDriveStatus('Ready. Click Connect Google Drive.'); });
 
 async function findDriveFile(){
   const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
