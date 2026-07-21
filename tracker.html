@@ -876,8 +876,8 @@
 
   <div class="drive-box">
     <!--
-      Google Drive setup steps (kept here for reference, not shown to visitors —
-      already done once; no need for anyone using this tracker to see it):
+      Google Drive setup steps (kept here for reference; the Client ID itself
+      lives in tracker.js as GOOGLE_CLIENT_ID — nothing to paste in here):
 
       1. Go to https://console.cloud.google.com/apis/credentials and create a
          project (any name).
@@ -886,25 +886,18 @@
       3. Configure the OAuth consent screen as "External", add your own Gmail
          address (and anyone else's you want using this) as a test user, and
          keep it in "Testing" mode — no Google review needed for personal use.
+         This test-user list is what actually controls who can sign in; the
+         Client ID itself is a public identifier, not a secret, per Google's
+         own documentation, so there's nothing sensitive about it appearing
+         in this file or in network requests.
       4. Create an OAuth Client ID of type "Web application". Under
          "Authorized JavaScript origins", add the exact URL this page is
          hosted at (e.g. https://yourusername.github.io).
-      5. Copy the Client ID (ends in .apps.googleusercontent.com) and paste
-         it into the box below.
-
-      Nothing there is secret — a Client ID on its own can't access anyone's
-      data without them approving the sign-in popup themselves.
-
-      Setting up a second device: click "Copy setup link" once the Client ID
-      is saved, open that link on the other device to auto-fill it there —
-      still need to click Connect and approve the Google popup on that device.
+      5. Paste the Client ID into the GOOGLE_CLIENT_ID constant near the top
+         of tracker.js. Every device just works from there — nothing to type
+         into this page on any device.
     -->
     <p class="section-desc" style="margin-top:0;">☁️ Google Drive backup</p>
-    <div class="setup-row">
-      <input type="text" id="googleClientIdInput" placeholder="Paste your Google OAuth Client ID here">
-      <button class="btn-secondary" id="saveClientId">Save</button>
-      <button class="btn-secondary" id="copySetupLink" title="Copy a link that auto-fills this Client ID on another device">📋 Copy setup link</button>
-    </div>
     <div class="drive-status" id="driveStatus">Not connected</div>
     <div class="setup-row">
       <button class="btn-secondary" id="connectDrive">🔗 Connect Google Drive</button>
