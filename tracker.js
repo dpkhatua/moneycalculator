@@ -30,7 +30,8 @@ function emptyNetWorthBucket(){
     lending: [], // money lent to people — intentionally never included in net worth totals
     sips: [],    // ongoing SIPs — installments auto-log on their due date
     insurance: [], // ongoing insurance policies
-    recurringExpenses: [] // "definite spending" — fixed bills that auto-log as real expenses on schedule
+    recurringExpenses: [], // "definite spending" — fixed bills that auto-log as real expenses on schedule
+    swps: [] // Systematic Withdrawal (and optional transfer-into-SIP): auto-withdraws from one holding, optionally auto-invests into another
   };
 }
 
@@ -797,6 +798,64 @@ function recomputeSimpleLot(h){
   h.lots[0].quantity = 1;
   h.lots[0].price = total;
   h.lots[0].date = oldestDate;
+}
+
+// Shared "deposit into a holding automatically" used by both SIP installments
+// and SWP transfers — same logic as a manual "+ Buy"/"+ Add", just without prompts.
+function postContributionToHolding(holding, date, amount, note){
+  if(isSimpleValueClass(holding.assetClass)){
+    holding.investmentLog = holding.investmentLog || [];
+    holding.investmentLog.push({ id: nwUid(), date, amount, note });
+    recomputeSimpleLot(holding);
+  } else {
+    holding.lots.push({ id: nwUid(), date, quantity: 1, price: amount, note });
+  }
+}
+
+// Shared "withdraw from a holding automatically" used by SWP — same math as
+// the manual "− Sell"/"− Withdraw" flow, just without prompts, and capped at
+// whatever the holding is actually worth (so it can never go negative).
+function withdrawFromHoldingAuto(holding, date, amount){
+  const currentValue = holdingCurrentValue(holding);
+  if(currentValue<=0) return { withdrawn:0, realizedPL:0, shortfall:true };
+  const actual = Math.min(amount, currentValue);
+  let realizedPL = 0;
+
+  if(isSimpleValueClass(holding.assetClass)){
+    const proportion = actual / currentValue;
+    const costBasisRemoved = holding.lots[0].price * proportion;
+    const daysHeld = daysBetween(holding.lots[0].date, date);
+    (holding.investmentLog||[]).forEach(e=>{ e.amount = e.amount * (1-proportion); });
+    recomputeSimpleLot(holding);
+    holding.currentPrice -= actual;
+    realizedPL = actual - costBasisRemoved;
+    holding.sells = holding.sells || [];
+    holding.sells.push({ id: nwUid(), date, amount: actual, costBasis: costBasisRemoved, realizedPL, daysHeld });
+  } else {
+    const sellQty = holding.currentPrice>0 ? actual / holding.currentPrice : 0;
+    holding.lots.sort((a,b)=>a.date.localeCompare(b.date));
+    let remaining = sellQty, costBasisTotal=0, weightedDaysSum=0;
+    const newLots=[];
+    for(const lot of holding.lots){
+      if(remaining<=0){ newLots.push(lot); continue; }
+      if(lot.quantity<=remaining){
+        costBasisTotal += lot.quantity*lot.price;
+        weightedDaysSum += lot.quantity*daysBetween(lot.date, date);
+        remaining -= lot.quantity;
+      } else {
+        costBasisTotal += remaining*lot.price;
+        weightedDaysSum += remaining*daysBetween(lot.date, date);
+        newLots.push({ id: lot.id, date: lot.date, quantity: lot.quantity-remaining, price: lot.price });
+        remaining = 0;
+      }
+    }
+    holding.lots = newLots;
+    realizedPL = actual - costBasisTotal;
+    const daysHeld = sellQty>0 ? Math.round(weightedDaysSum/sellQty) : 0;
+    holding.sells = holding.sells || [];
+    holding.sells.push({ id: nwUid(), date, quantity: sellQty, price: holding.currentPrice, costBasis: costBasisTotal, realizedPL, daysHeld });
+  }
+  return { withdrawn: actual, realizedPL, shortfall: actual<amount-0.01 };
 }
 
 function migrateHolding(h){
@@ -2384,6 +2443,13 @@ function renderNotifications(){
       items.push({ days, kind:'recurring', text:`Recurring "${r.name}" — ${fmtAmount(r.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${r.nextDueDate})` });
     }
   });
+  getSwps().forEach(swp=>{
+    if(swp.status!=='active') return;
+    const days = daysBetween(today, swp.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, kind:'swp', text:`SWP "${swp.name}" — ${fmtAmount(swp.amount)} withdrawal due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${swp.nextDueDate})` });
+    }
+  });
   getInsurance().forEach(ins=>{
     if(ins.status==='lapsed') return;
     const days = daysBetween(today, ins.nextDueDate);
@@ -2617,6 +2683,308 @@ function renderRecurring(){
   renderList();
 }
 
+// ---------- SWP (Systematic Withdrawal, optionally feeding into a SIP-style destination) ----------
+function getSwps(){ return getNW().swps; }
+
+function swpFrequencyLabel(swp){ return SIP_FREQ_LABEL[`${swp.frequencyUnit}:${swp.frequencyValue}`] || `Every ${swp.frequencyValue} ${swp.frequencyUnit}`; }
+function swpMonthlyEquivalent(swp){
+  return swp.frequencyUnit==='days' ? swp.amount*(30.44/swp.frequencyValue) : swp.amount/swp.frequencyValue;
+}
+function swpTotalWithdrawn(swp){ return swp.withdrawals.reduce((s,w)=>s+w.amount,0); }
+
+function populateSwpHoldingSelects(){
+  const holdings = getNW().holdings;
+  [['swpSourceHolding', false], ['swpDestHolding', true]].forEach(([id, allowNone])=>{
+    const sel = document.getElementById(id);
+    const prevValue = sel.value;
+    sel.innerHTML = allowNone ? '<option value="">— none, just withdraw —</option>' : '';
+    holdings.forEach(h=>{
+      const opt = document.createElement('option');
+      opt.value = h.id;
+      opt.textContent = `${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`;
+      sel.appendChild(opt);
+    });
+    if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+  });
+}
+
+function syncSwpWithdrawals(){
+  const today = todayLocalISO();
+  let changed = false;
+  getSwps().forEach(swp=>{
+    if(swp.status!=='active') return;
+    let guard = 0;
+    while(swp.nextDueDate<=today && guard<600){
+      const date = swp.nextDueDate;
+      const source = getNW().holdings.find(h=>h.id===swp.sourceHoldingId);
+      const withdrawal = { id: nwUid(), date, amount:0, realizedPL:0, shortfall:true, postedToDest: false };
+      if(source){
+        const result = withdrawFromHoldingAuto(source, date, swp.amount);
+        withdrawal.amount = result.withdrawn;
+        withdrawal.realizedPL = result.realizedPL;
+        withdrawal.shortfall = result.shortfall;
+        if(swp.destHoldingId && result.withdrawn>0){
+          const dest = getNW().holdings.find(h=>h.id===swp.destHoldingId);
+          if(dest){
+            postContributionToHolding(dest, date, result.withdrawn, `SWP transfer: ${swp.name}`);
+            withdrawal.postedToDest = true;
+          }
+        }
+      }
+      swp.withdrawals.push(withdrawal);
+      swp.nextDueDate = advanceDate(swp.nextDueDate, swp.frequencyUnit, swp.frequencyValue);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+document.getElementById('addSwp').addEventListener('click', ()=>{
+  const name = document.getElementById('swpName').value.trim();
+  const amount = +document.getElementById('swpAmount').value;
+  const sourceHoldingId = document.getElementById('swpSourceHolding').value || null;
+  const destHoldingId = document.getElementById('swpDestHolding').value || null;
+  const [frequencyUnit, freqValueRaw] = document.getElementById('swpFrequency').value.split(':');
+  const frequencyValue = +freqValueRaw;
+  const startDate = document.getElementById('swpStartDate').value || todayLocalISO();
+
+  if(!name){ alert('Give this SWP a name.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+  if(!sourceHoldingId){ alert('Pick a holding to withdraw from.'); return; }
+  if(sourceHoldingId===destHoldingId){ alert('Source and destination can\'t be the same holding.'); return; }
+
+  getSwps().push({
+    id: nwUid(),
+    name,
+    amount,
+    sourceHoldingId,
+    destHoldingId,
+    frequencyUnit,
+    frequencyValue,
+    startDate,
+    status: 'active',
+    stoppedDate: null,
+    nextDueDate: startDate,
+    withdrawals: []
+  });
+  saveData();
+  document.getElementById('swpName').value = '';
+  document.getElementById('swpAmount').value = '';
+  document.getElementById('swpStartDate').value = todayLocalISO();
+  renderSwps();
+});
+
+function stopSwp(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  if(!confirm(`Stop "${swp.name}"? No more withdrawals will happen automatically after today.`)) return;
+  swp.status = 'stopped';
+  swp.stoppedDate = todayLocalISO();
+  saveData();
+  renderSwps();
+}
+function resumeSwp(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  swp.status = 'active';
+  swp.stoppedDate = null;
+  if(swp.nextDueDate < todayLocalISO()) swp.nextDueDate = todayLocalISO();
+  saveData();
+  renderSwps();
+}
+function editSwpInfo(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  const newName = prompt('SWP name:', swp.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newAmt = prompt(`Amount per ${swpFrequencyLabel(swp).toLowerCase()} withdrawal:`, swp.amount);
+  if(newAmt===null) return;
+  const amt = +newAmt;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+
+  const holdings = getNW().holdings;
+  const list = holdings.map((h,i)=>`${i+1}. ${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`).join('\n');
+  const srcIndex = holdings.findIndex(h=>h.id===swp.sourceHoldingId);
+  const srcRaw = holdings.length===0 ? null : prompt(`Withdraw from which holding? Enter its number:\n\n${list}`, srcIndex>=0 ? String(srcIndex+1) : '1');
+  if(srcRaw===null) return;
+  const srcNum = parseInt(srcRaw, 10);
+  const newSourceHoldingId = (!isNaN(srcNum) && srcNum>=1 && srcNum<=holdings.length) ? holdings[srcNum-1].id : swp.sourceHoldingId;
+
+  const destIndex = holdings.findIndex(h=>h.id===swp.destHoldingId);
+  const destRaw = holdings.length===0 ? null : prompt(`Invest into which holding (optional)? Enter its number, or 0 for none:\n\n0. — none, just withdraw —\n${list}`, destIndex>=0 ? String(destIndex+2) : '0');
+  let newDestHoldingId = swp.destHoldingId;
+  if(destRaw!==null){
+    const destNum = parseInt(destRaw, 10);
+    newDestHoldingId = (!isNaN(destNum) && destNum>=1 && destNum<=holdings.length) ? holdings[destNum-1].id : null;
+  }
+  if(newSourceHoldingId===newDestHoldingId && newDestHoldingId){ alert('Source and destination can\'t be the same holding — destination link not changed.'); newDestHoldingId = swp.destHoldingId; }
+
+  swp.name = newName.trim();
+  swp.amount = amt;
+  const destChanged = newDestHoldingId !== (swp.destHoldingId||null);
+  swp.sourceHoldingId = newSourceHoldingId;
+  swp.destHoldingId = newDestHoldingId;
+  saveData();
+  if(destChanged && newDestHoldingId){
+    backfillSwpWithdrawals(swp.id);
+    return;
+  }
+  renderSwps();
+}
+
+// Posts any of this SWP's withdrawals that happened before a destination was
+// set (or before it was changed) into the new destination's invested amount —
+// mirrors the same fix built for SIPs.
+function backfillSwpWithdrawals(swpId){
+  const swp = getSwps().find(x=>x.id===swpId);
+  if(!swp || !swp.destHoldingId) return;
+  const dest = getNW().holdings.find(h=>h.id===swp.destHoldingId);
+  if(!dest) return;
+  const unposted = swp.withdrawals.filter(w=>!w.postedToDest && w.amount>0);
+  if(unposted.length===0){ renderSwps(); return; }
+  const total = unposted.reduce((s,w)=>s+w.amount,0);
+  if(!confirm(`"${swp.name}" has ${unposted.length} withdrawal(s) totaling ${fmtAmount(total)} that never reached "${dest.name}". Add them to its invested amount now?`)){
+    renderSwps();
+    return;
+  }
+  unposted.forEach(w=>{
+    postContributionToHolding(dest, w.date, w.amount, `SWP transfer: ${swp.name} (backfilled)`);
+    w.postedToDest = true;
+  });
+  saveData();
+  renderAll();
+}
+
+function editWithdrawal(swpId, withdrawalId){
+  const swp = getSwps().find(x=>x.id===swpId);
+  if(!swp) return;
+  const w = swp.withdrawals.find(x=>x.id===withdrawalId);
+  if(!w) return;
+  const amtRaw = prompt('Amount:', w.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', w.date);
+  if(dateRaw===null) return;
+  w.amount = amt;
+  w.date = dateRaw || w.date;
+  saveData();
+  renderSwps();
+}
+function deleteWithdrawal(swpId, withdrawalId){
+  const swp = getSwps().find(x=>x.id===swpId);
+  if(!swp) return;
+  if(!confirm('Delete this withdrawal entry? (This only removes it from the SWP\'s own log — it does not undo the actual withdrawal/transfer already applied to your holdings.)')) return;
+  swp.withdrawals = swp.withdrawals.filter(x=>x.id!==withdrawalId);
+  saveData();
+  renderSwps();
+}
+function deleteSwp(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  if(!confirm(`Delete "${swp.name}" entirely, including its withdrawal history? This can't be undone (it won't undo withdrawals already applied to your holdings).`)) return;
+  markDeleted(id);
+  getNW().swps = getSwps().filter(x=>x.id!==id);
+  saveData();
+  renderSwps();
+}
+
+function buildSwpCard(swp){
+  const withdrawn = swpTotalWithdrawn(swp);
+  const isStopped = swp.status==='stopped';
+  const source = getNW().holdings.find(h=>h.id===swp.sourceHoldingId);
+  const dest = swp.destHoldingId ? getNW().holdings.find(h=>h.id===swp.destHoldingId) : null;
+  const unpostedCount = swp.destHoldingId ? swp.withdrawals.filter(w=>!w.postedToDest && w.amount>0).length : 0;
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${isStopped?'stopped':'repaid'}">${isStopped?'Stopped':'Active'}</span>
+      <span class="h-name">${escapeHtml(swp.name)}</span>
+      <span class="h-meta">${escapeHtml(source?source.name:'— missing holding —')}${dest?' → '+escapeHtml(dest.name):''}</span>
+    </div>
+    ${unpostedCount>0?`<div class="h-note" style="color:var(--brick);">⚠ ${unpostedCount} withdrawal(s) haven't reached "${escapeHtml(dest.name)}" yet — see Backfill below.</div>`:''}
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Amount / ${swpFrequencyLabel(swp)}</span>${fmtAmount(swp.amount)}</div>
+      <div class="h-figure"><span class="lbl">Started</span>${swp.startDate}</div>
+      <div class="h-figure"><span class="lbl">Total withdrawn</span>${fmtAmount(withdrawn)}</div>
+      <div class="h-figure"><span class="lbl">Withdrawals</span>${swp.withdrawals.length}</div>
+      ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${swp.nextDueDate}</div>`:''}
+    </div>
+    <div class="h-actions">
+      ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop SWP</button>'}
+      <button data-action="edit">✎ Edit</button>
+      ${unpostedCount>0?'<button class="buy" data-action="backfill">⏪ Backfill '+unpostedCount+' withdrawal(s)</button>':''}
+      <button data-action="log">☰ Withdrawals</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="swplog-${swp.id}" style="display:none;"></div>
+  `;
+  const stopBtn = card.querySelector('[data-action=stop]');
+  if(stopBtn) stopBtn.addEventListener('click', ()=>stopSwp(swp.id));
+  const resumeBtn = card.querySelector('[data-action=resume]');
+  if(resumeBtn) resumeBtn.addEventListener('click', ()=>resumeSwp(swp.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editSwpInfo(swp.id));
+  const backfillBtn = card.querySelector('[data-action=backfill]');
+  if(backfillBtn) backfillBtn.addEventListener('click', ()=>backfillSwpWithdrawals(swp.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('swplog-'+swp.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteSwp(swp.id));
+
+  const logEl = card.querySelector('.h-log');
+  if(swp.withdrawals.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No withdrawals logged yet.</span>';
+  }
+  swp.withdrawals.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    const shortfallNote = w.shortfall ? ' <span class="dup-badge" title="Not enough balance in the source holding to withdraw the full amount">⚠ partial/shortfall</span>' : '';
+    const destNote = swp.destHoldingId ? (w.postedToDest ? ' → invested' : ' → not yet transferred') : '';
+    row.innerHTML = `<span>Withdrew ${fmtAmount(w.amount)} on ${w.date}${destNote}${shortfallNote}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editWithdrawal(swp.id, w.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteWithdrawal(swp.id, w.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  return card;
+}
+
+function renderSwpsList(){
+  const wrap = document.getElementById('swpList');
+  const swps = getSwps();
+  if(swps.length===0){
+    wrap.innerHTML = '<div class="empty-state">No SWPs logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  swps.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(swp=>wrap.appendChild(buildSwpCard(swp)));
+}
+function renderSwpsSummary(){
+  const swps = getSwps();
+  const active = swps.filter(s=>s.status==='active');
+  document.getElementById('swpActiveCount').textContent = active.length;
+  document.getElementById('swpMonthlyTotal').textContent = fmtAmount(active.reduce((s,x)=>s+swpMonthlyEquivalent(x),0));
+  document.getElementById('swpTotalWithdrawn').textContent = fmtAmount(swps.reduce((s,x)=>s+swpTotalWithdrawn(x),0));
+}
+function renderSwps(){
+  syncSwpWithdrawals();
+  populateSwpHoldingSelects();
+  renderSwpsList();
+  renderSwpsSummary();
+  renderNetWorth(); // a SWP sync may have just withdrawn/invested — keep holdings in sync
+}
+
 // ---------- Collapsible sections (Lending / SIPs / Insurance) ----------
 // Remembered for the browser session (sessionStorage) so collapsing a
 // section you don't use stays collapsed as you keep using the tracker,
@@ -2639,6 +3007,7 @@ setupCollapsibleSection('lendingSectionHead','lendingArrow','lendingSectionBody'
 setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
 setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
+setupCollapsibleSection('swpSectionHead','swpArrow','swpSectionBody','spendingTracker.collapsed.swp');
 setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
 
 function setCurrency(currency){
@@ -2666,11 +3035,13 @@ function renderAll(){
   renderMonthlyCategoryTable();
   renderTagBreakdown();
   syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
+  syncSwpWithdrawals(); // same reasoning — a SWP-driven withdrawal/transfer should show up immediately too
   renderNetWorth();
   renderLending();
   renderSips();
   renderInsurance();
   renderRecurring();
+  renderSwps();
   renderNotifications();
 }
 
@@ -2752,6 +3123,11 @@ function mergeNetWorthFromBackup(incomingNW){
       if(!localBucket.recurringExpenses) localBucket.recurringExpenses = [];
       const existingRecurIds = new Set(localBucket.recurringExpenses.map(r=>r.id));
       incomingBucket.recurringExpenses.forEach(r=>{ if(r.id && !existingRecurIds.has(r.id) && !isDeleted(r.id)) localBucket.recurringExpenses.push(r); });
+    }
+    if(Array.isArray(incomingBucket.swps)){
+      if(!localBucket.swps) localBucket.swps = [];
+      const existingSwpIds = new Set(localBucket.swps.map(s=>s.id));
+      incomingBucket.swps.forEach(s=>{ if(s.id && !existingSwpIds.has(s.id) && !isDeleted(s.id)) localBucket.swps.push(s); });
     }
   });
   return addedHoldings;
@@ -3080,6 +3456,7 @@ document.getElementById('lendDate').value = todayLocalISO();
 document.getElementById('sipStartDate').value = todayLocalISO();
 document.getElementById('insBoughtDate').value = todayLocalISO();
 document.getElementById('recurStartDate').value = todayLocalISO();
+document.getElementById('swpStartDate').value = todayLocalISO();
 renderAll();
 checkBackupReminder();
 
