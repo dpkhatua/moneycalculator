@@ -817,6 +817,59 @@
   <div class="holding-list" id="recurringList" style="margin-bottom:44px;"></div>
   </div>
 
+  <!-- SWP -->
+  <div class="section-head collapsible" id="swpSectionHead"><h2><span class="section-arrow" id="swpArrow">▾</span>SWP</h2></div>
+  <div id="swpSectionBody">
+  <p class="section-desc">Systematic Withdrawal — auto-withdraws from one holding on schedule, and optionally routes that same amount straight into another holding (like a Systematic Transfer Plan). Leave "Invest into" as none if you just want a plain withdrawal.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a SWP</div>
+      <div class="holding-form">
+        <div>
+          <label>Name</label>
+          <input type="text" id="swpName" placeholder="e.g. Retirement drawdown" maxlength="80">
+        </div>
+        <div>
+          <label>Amount per withdrawal</label>
+          <input type="number" id="swpAmount" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Withdraw from</label>
+          <select id="swpSourceHolding"></select>
+        </div>
+        <div>
+          <label>Invest into <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <select id="swpDestHolding"></select>
+        </div>
+        <div>
+          <label>Frequency</label>
+          <select id="swpFrequency">
+            <option value="days:7">Weekly</option>
+            <option value="months:1" selected>Monthly</option>
+            <option value="months:3">Quarterly</option>
+          </select>
+        </div>
+        <div>
+          <label>Start date</label>
+          <input type="date" id="swpStartDate">
+        </div>
+        <div>
+          <button class="btn-primary" id="addSwp" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Active SWPs</div><div class="val" id="swpActiveCount">0</div></div>
+    <div class="t"><div class="lbl">Monthly-equivalent withdrawal</div><div class="val" id="swpMonthlyTotal">0</div></div>
+    <div class="t"><div class="lbl">Total withdrawn</div><div class="val" id="swpTotalWithdrawn">0</div></div>
+  </div>
+
+  <div class="holding-list" id="swpList" style="margin-bottom:44px;"></div>
+  </div>
+
   <!-- Data management -->
   <div class="section-head"><h2>Your data</h2></div>
   <p class="section-desc">Everything here is stored only in this browser. Back it up regularly, especially before clearing your browser data or switching devices.</p>
