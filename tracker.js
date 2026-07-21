@@ -121,14 +121,52 @@ function loadData(){
   // "Buy" was used more than once before this fix, multiple lots would have
   // made quantity grow past 1, which silently multiplied the current value
   // (quantity × currentPrice) incorrectly. Consolidate into a single lot,
-  // preserving the correct total invested amount.
+  // preserving the correct total invested amount and moving the original
+  // per-buy history into investmentLog so nothing is lost.
   ['INR','USD'].forEach(cur=>{
     netWorthData[cur].holdings.forEach(h=>{
       if(isSimpleValueClass(h.assetClass) && h.lots.length>1){
         const totalCost = h.lots.reduce((s,l)=>s+l.quantity*l.price,0);
         const latestDate = h.lots.reduce((max,l)=> l.date>max?l.date:max, h.lots[0].date);
-        h.lots = [{ id: nwUid(), date: latestDate, quantity: 1, price: totalCost }];
+        const earliestDate = h.lots.reduce((min,l)=> l.date<min?l.date:min, h.lots[0].date);
+        if(!h.investmentLog){
+          h.investmentLog = h.lots.map(l=>({ id: l.id, date: l.date, amount: l.quantity*l.price, note: l.note||null }));
+        }
+        h.lots = [{ id: nwUid(), date: earliestDate, quantity: 1, price: totalCost }];
+        h.lots[0].date = earliestDate;
+        void latestDate; // kept for clarity; earliestDate is what "held since" should use
       }
+    });
+  });
+  // Migration: every simple-value holding needs an investmentLog (a running,
+  // editable history of each contribution) — seed one from the single lot if
+  // it doesn't have one yet, so older holdings get history too.
+  ['INR','USD'].forEach(cur=>{
+    netWorthData[cur].holdings.forEach(h=>{
+      if(isSimpleValueClass(h.assetClass) && !h.investmentLog){
+        h.investmentLog = h.lots.length>0
+          ? [{ id: nwUid(), date: h.lots[0].date, amount: h.lots[0].price, note: h.lots[0].note||null }]
+          : [];
+      }
+    });
+  });
+  // Migration: SIP installments logged before "postedToHolding" tracking
+  // existed don't have that flag at all. Rather than assuming they were (or
+  // weren't) posted, check the linked holding's own history for a matching
+  // date+amount entry — if it's genuinely there, mark it posted so Backfill
+  // won't double-count it; if it's missing, leave it eligible for backfill.
+  ['INR','USD'].forEach(cur=>{
+    const bucket = netWorthData[cur];
+    bucket.sips.forEach(sip=>{
+      const holding = sip.linkedHoldingId ? bucket.holdings.find(h=>h.id===sip.linkedHoldingId) : null;
+      sip.installments.forEach(inst=>{
+        if(inst.postedToHolding !== undefined) return;
+        if(!holding){ inst.postedToHolding = false; return; }
+        const alreadyThere = isSimpleValueClass(holding.assetClass)
+          ? (holding.investmentLog||[]).some(e=>e.date===inst.date && Math.abs(e.amount-inst.amount)<0.01)
+          : (holding.lots||[]).some(l=>l.date===inst.date && Math.abs(l.price-inst.amount)<0.01);
+        inst.postedToHolding = alreadyThere;
+      });
     });
   });
   // Migration: Real Estate/Vehicles/Other used to be flat number fields —
@@ -748,6 +786,19 @@ function holdingRealizedPL(h){ return (h.sells||[]).reduce((s,x)=>s+x.realizedPL
 // Old holdings (before quantity/price tracking) get converted into a single
 // lot of quantity 1 at the old invested amount, so nothing is lost — you can
 // keep using them as-is, or edit the quantity/price going forward.
+// For simple-value holdings, investmentLog is the editable source of truth
+// (every contribution, manual or SIP-driven, as its own entry). The single
+// lot is just a derived total kept in sync with it, so the value math
+// (quantity × currentPrice) stays correct without ever needing a second lot.
+function recomputeSimpleLot(h){
+  const total = (h.investmentLog||[]).reduce((s,e)=>s+e.amount,0);
+  const oldestDate = (h.investmentLog||[]).reduce((min,e)=> (!min||e.date<min) ? e.date : min, null) || todayLocalISO();
+  if(h.lots.length===0) h.lots.push({ id: nwUid(), date: oldestDate, quantity:1, price:0 });
+  h.lots[0].quantity = 1;
+  h.lots[0].price = total;
+  h.lots[0].date = oldestDate;
+}
+
 function migrateHolding(h){
   if(h.lots) return h;
   return {
@@ -782,7 +833,8 @@ document.getElementById('addHolding').addEventListener('click', ()=>{
     note: note || null,
     currentPrice,
     lots: [{ id: nwUid(), date, quantity, price }],
-    sells: []
+    sells: [],
+    investmentLog: isSimpleValueClass(assetClass) ? [{ id: nwUid(), date, amount: price, note: null }] : undefined
   });
   saveData();
   document.getElementById('holdingName').value = '';
@@ -806,12 +858,10 @@ function buyHolding(id){
     if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
     const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
     const date = dateRaw || todayLocalISO();
-    // Single-lot invariant: merge into the existing lot's cost basis rather
-    // than adding a new one, so quantity always stays exactly 1 and
-    // (quantity × currentPrice) never gets multiplied up by mistake.
-    if(h.lots.length===0) h.lots.push({ id: nwUid(), date, quantity:1, price:0 });
-    h.lots[0].price += amount;
-    h.lots[0].date = date;
+    const noteRaw = prompt('Note (optional):', '') || '';
+    h.investmentLog = h.investmentLog || [];
+    h.investmentLog.push({ id: nwUid(), date, amount, note: noteRaw.trim() || null });
+    recomputeSimpleLot(h);
     h.currentPrice = (h.currentPrice||0) + amount;
     saveData();
     renderNetWorth();
@@ -853,7 +903,11 @@ function sellHolding(id){
     const proportion = amount / currentValue;
     const costBasisRemoved = h.lots[0].price * proportion;
     const daysHeld = daysBetween(h.lots[0].date, sellDate);
-    h.lots[0].price -= costBasisRemoved;
+    // Scale every historical contribution down by the same proportion, so
+    // investmentLog (the source of truth for invested amount) reflects the
+    // withdrawal, rather than editing the derived lot directly.
+    (h.investmentLog||[]).forEach(e=>{ e.amount = e.amount * (1-proportion); });
+    recomputeSimpleLot(h);
     h.currentPrice -= amount;
     const realizedPL = amount - costBasisRemoved;
     h.sells = h.sells || [];
@@ -984,24 +1038,6 @@ function editLot(holdingId, lotId){
   const lot = h.lots.find(l=>l.id===lotId);
   if(!lot) return;
 
-  if(isSimpleValueClass(h.assetClass)){
-    const amtRaw = prompt('Invested amount:', lot.price);
-    if(amtRaw===null) return;
-    const amt = +amtRaw;
-    if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
-    const dateRaw = prompt('Date (YYYY-MM-DD):', lot.date);
-    if(dateRaw===null) return;
-    const noteRaw = prompt('Note (optional):', lot.note||'');
-    if(noteRaw===null) return;
-    lot.quantity = 1;
-    lot.price = amt;
-    lot.date = dateRaw || lot.date;
-    lot.note = noteRaw.trim() || null;
-    saveData();
-    renderNetWorth();
-    return;
-  }
-
   const qtyRaw = prompt('Quantity/units for this buy:', lot.quantity);
   if(qtyRaw===null) return;
   const qty = +qtyRaw;
@@ -1038,6 +1074,46 @@ function deleteLot(holdingId, lotId){
   }
   if(!confirm('Delete this buy entry?')) return;
   h.lots = h.lots.filter(l=>l.id!==lotId);
+  saveData();
+  renderNetWorth();
+}
+
+// For simple-value holdings, each contribution (manual or SIP) is its own
+// editable/deletable entry in investmentLog — the single lot is just kept in
+// sync with it via recomputeSimpleLot, never edited directly.
+function editInvestmentLogEntry(holdingId, entryId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  const entry = (h.investmentLog||[]).find(e=>e.id===entryId);
+  if(!entry) return;
+  const amtRaw = prompt('Amount:', entry.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', entry.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', entry.note||'');
+  if(noteRaw===null) return;
+  entry.amount = amt;
+  entry.date = dateRaw || entry.date;
+  entry.note = noteRaw.trim() || null;
+  recomputeSimpleLot(h);
+  saveData();
+  renderNetWorth();
+}
+function deleteInvestmentLogEntry(holdingId, entryId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  if(h.investmentLog.length===1 && (!h.sells || h.sells.length===0)){
+    if(!confirm('This is the only contribution on this holding — deleting it will remove the whole holding. Continue?')) return;
+    getNW().holdings = getNW().holdings.filter(x=>x.id!==holdingId);
+    saveData();
+    renderNetWorth();
+    return;
+  }
+  if(!confirm('Delete this entry?')) return;
+  h.investmentLog = h.investmentLog.filter(e=>e.id!==entryId);
+  recomputeSimpleLot(h);
   saveData();
   renderNetWorth();
 }
@@ -1195,32 +1271,49 @@ function buildHoldingCard(h, today){
   // Build the buy/sell log with per-entry edit/delete controls (done as real
   // DOM nodes, not string-joined text, so each entry can carry its own buttons).
   const logEl = card.querySelector('.h-log');
-  const lotDupCounts = {};
-  h.lots.forEach(l=>{
-    const key = [l.date, l.quantity, l.price].join('|');
-    lotDupCounts[key] = (lotDupCounts[key]||0)+1;
-  });
-  h.lots.forEach(l=>{
-    const key = [l.date, l.quantity, l.price].join('|');
-    const isDup = lotDupCounts[key] > 1;
-    const row = document.createElement('div');
-    row.className = 'log-row';
-    const lotText = simple
-      ? `Invested ${fmtAmount(l.price)} as of ${l.date}${l.note?' — '+escapeHtml(l.note):''}`
-      : `Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}`;
-    row.innerHTML = `<span>${lotText}${isDup?' <span class="dup-badge" title="Another buy on this holding has the same date, quantity, and price">⚠ possible duplicate</span>':''}</span>`;
-    const editBtn = document.createElement('button');
-    editBtn.textContent = '✎';
-    editBtn.title = 'Edit this entry';
-    editBtn.addEventListener('click', ()=>editLot(h.id, l.id));
-    const delBtn = document.createElement('button');
-    delBtn.textContent = '×';
-    delBtn.title = 'Delete this entry';
-    delBtn.addEventListener('click', ()=>deleteLot(h.id, l.id));
-    row.appendChild(editBtn);
-    row.appendChild(delBtn);
-    logEl.appendChild(row);
-  });
+  if(simple){
+    (h.investmentLog||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(e=>{
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      row.innerHTML = `<span>Invested ${fmtAmount(e.amount)} on ${e.date}${e.note?' — '+escapeHtml(e.note):''}</span>`;
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit this entry';
+      editBtn.addEventListener('click', ()=>editInvestmentLogEntry(h.id, e.id));
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete this entry';
+      delBtn.addEventListener('click', ()=>deleteInvestmentLogEntry(h.id, e.id));
+      row.appendChild(editBtn);
+      row.appendChild(delBtn);
+      logEl.appendChild(row);
+    });
+  } else {
+    const lotDupCounts = {};
+    h.lots.forEach(l=>{
+      const key = [l.date, l.quantity, l.price].join('|');
+      lotDupCounts[key] = (lotDupCounts[key]||0)+1;
+    });
+    h.lots.forEach(l=>{
+      const key = [l.date, l.quantity, l.price].join('|');
+      const isDup = lotDupCounts[key] > 1;
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      const lotText = `Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}`;
+      row.innerHTML = `<span>${lotText}${isDup?' <span class="dup-badge" title="Another buy on this holding has the same date, quantity, and price">⚠ possible duplicate</span>':''}</span>`;
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit this entry';
+      editBtn.addEventListener('click', ()=>editLot(h.id, l.id));
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete this entry';
+      delBtn.addEventListener('click', ()=>deleteLot(h.id, l.id));
+      row.appendChild(editBtn);
+      row.appendChild(delBtn);
+      logEl.appendChild(row);
+    });
+  }
   (h.sells||[]).forEach(s=>{
     const row = document.createElement('div');
     row.className = 'log-row';
@@ -1235,7 +1328,8 @@ function buildHoldingCard(h, today){
     row.appendChild(delBtn);
     logEl.appendChild(row);
   });
-  if(h.lots.length===0 && (!h.sells || h.sells.length===0)){
+  const logEntryCount = simple ? (h.investmentLog||[]).length : h.lots.length;
+  if(logEntryCount===0 && (!h.sells || h.sells.length===0)){
     logEl.innerHTML = '<span style="color:var(--ink-soft);">No entries.</span>';
   }
 
@@ -1754,7 +1848,8 @@ function syncSipInstallments(){
     let guard = 0;
     while(sip.nextDueDate<=today && guard<600){
       const installmentDate = sip.nextDueDate;
-      sip.installments.push({ id: nwUid(), date: installmentDate, amount: sip.amount });
+      const installment = { id: nwUid(), date: installmentDate, amount: sip.amount, postedToHolding: false };
+      sip.installments.push(installment);
       // If this SIP is linked to a real holding, also log the same amount as
       // a buy there — that's what makes an automatic note show up at the
       // bottom of the holding's own buy/sell log, right where you'd look for it.
@@ -1762,17 +1857,19 @@ function syncSipInstallments(){
         const holding = getNW().holdings.find(h=>h.id===sip.linkedHoldingId);
         if(holding){
           if(isSimpleValueClass(holding.assetClass)){
-            // MF/Liquid Fund/Gold/etc. must always stay as exactly one lot —
-            // add the installment to that lot's invested amount. Current
-            // value is intentionally left alone; you update that yourself.
-            if(holding.lots.length===0) holding.lots.push({ id: nwUid(), date: installmentDate, quantity:1, price:0, note:null });
-            holding.lots[0].price += sip.amount;
-            holding.lots[0].date = installmentDate;
-            holding.lots[0].note = `SIP: ${sip.name}`;
+            // MF/Liquid Fund/Gold/etc. must always stay as exactly one lot for
+            // the value math — but investmentLog keeps a full, separate
+            // history of every contribution (so each SIP installment shows
+            // up as its own dated entry, not one note getting overwritten).
+            // Current value is intentionally left alone; you update that yourself.
+            holding.investmentLog = holding.investmentLog || [];
+            holding.investmentLog.push({ id: nwUid(), date: installmentDate, amount: sip.amount, note: `SIP amount added to this fund on ${installmentDate}` });
+            recomputeSimpleLot(holding);
           } else {
             // Share-based holdings (Equity/US Stocks/Crypto) keep real per-buy lots.
             holding.lots.push({ id: nwUid(), date: installmentDate, quantity: 1, price: sip.amount, note: `SIP: ${sip.name}` });
           }
+          installment.postedToHolding = true;
         }
       }
       sip.nextDueDate = advanceDate(sip.nextDueDate, sip.frequencyUnit, sip.frequencyValue);
@@ -1861,11 +1958,48 @@ function editSipInfo(id){
   sip.amount = amt;
   if(linkRaw!==null){
     const linkNum = parseInt(linkRaw, 10);
-    sip.linkedHoldingId = (!isNaN(linkNum) && linkNum>=1 && linkNum<=holdings.length) ? holdings[linkNum-1].id : null;
+    const newLinkedHoldingId = (!isNaN(linkNum) && linkNum>=1 && linkNum<=holdings.length) ? holdings[linkNum-1].id : null;
+    const linkChanged = newLinkedHoldingId !== (sip.linkedHoldingId||null);
+    sip.linkedHoldingId = newLinkedHoldingId;
     sip.linkedHolding = null; // clear the old legacy text label now that it's properly linked (or explicitly unlinked)
+    saveData();
+    if(linkChanged && newLinkedHoldingId){
+      backfillSipInstallments(sip.id); // offers to post any already-fired installments that predate this link
+      return; // backfillSipInstallments re-renders itself
+    }
   }
   saveData();
   renderSips();
+}
+
+// Posts any of this SIP's installments that fired before it was linked (or
+// before a re-link) into the holding's invested amount — without this,
+// installments that happened before you set/changed the link would just sit
+// in the SIP's own history and never reach the fund.
+function backfillSipInstallments(sipId){
+  const sip = getSips().find(x=>x.id===sipId);
+  if(!sip || !sip.linkedHoldingId) return;
+  const holding = getNW().holdings.find(h=>h.id===sip.linkedHoldingId);
+  if(!holding) return;
+  const unposted = sip.installments.filter(i=>!i.postedToHolding);
+  if(unposted.length===0){ renderSips(); return; }
+  const total = unposted.reduce((s,i)=>s+i.amount,0);
+  if(!confirm(`"${sip.name}" has ${unposted.length} installment(s) totaling ${fmtAmount(total)} that fired before this link and never reached "${holding.name}". Add them to its invested amount now?`)){
+    renderSips();
+    return;
+  }
+  unposted.forEach(inst=>{
+    if(isSimpleValueClass(holding.assetClass)){
+      holding.investmentLog = holding.investmentLog || [];
+      holding.investmentLog.push({ id: nwUid(), date: inst.date, amount: inst.amount, note: `SIP amount added to this fund on ${inst.date} (backfilled)` });
+    } else {
+      holding.lots.push({ id: nwUid(), date: inst.date, quantity: 1, price: inst.amount, note: `SIP: ${sip.name} (backfilled)` });
+    }
+    inst.postedToHolding = true;
+  });
+  if(isSimpleValueClass(holding.assetClass)) recomputeSimpleLot(holding);
+  saveData();
+  renderAll();
 }
 function editInstallment(sipId, instId){
   const sip = getSips().find(x=>x.id===sipId);
@@ -1909,6 +2043,7 @@ function buildSipCard(sip){
   const neededThisYear = sipNeededThisYear(sip);
   const linkedHolding = sip.linkedHoldingId ? getNW().holdings.find(h=>h.id===sip.linkedHoldingId) : null;
   const linkedName = linkedHolding ? linkedHolding.name : (sip.linkedHolding || null); // old text-based links still display
+  const unpostedCount = sip.linkedHoldingId ? sip.installments.filter(i=>!i.postedToHolding).length : 0;
 
   const card = document.createElement('div');
   card.className = 'holding-card';
@@ -1918,6 +2053,7 @@ function buildSipCard(sip){
       <span class="h-name">${escapeHtml(sip.name)}</span>
       <span class="h-meta">${linkedName?'→ '+escapeHtml(linkedName):''}</span>
     </div>
+    ${unpostedCount>0?`<div class="h-note" style="color:var(--brick);">⚠ ${unpostedCount} installment(s) haven't reached "${escapeHtml(linkedName||'the linked fund')}" yet — see Backfill below.</div>`:''}
     <div class="hc-stats">
       <div class="h-figure"><span class="lbl">Amount / ${sipFrequencyLabel(sip)}</span>${fmtAmount(sip.amount)}</div>
       <div class="h-figure"><span class="lbl">Started</span>${sip.startDate}</div>
@@ -1932,6 +2068,7 @@ function buildSipCard(sip){
     <div class="h-actions">
       ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop SIP</button>'}
       <button data-action="edit">✎ Edit</button>
+      ${unpostedCount>0?'<button class="buy" data-action="backfill">⏪ Backfill '+unpostedCount+' installment(s)</button>':''}
       <button data-action="log">☰ Installments</button>
       <button data-action="del">× Delete</button>
     </div>
@@ -1942,6 +2079,8 @@ function buildSipCard(sip){
   const resumeBtn = card.querySelector('[data-action=resume]');
   if(resumeBtn) resumeBtn.addEventListener('click', ()=>resumeSip(sip.id));
   card.querySelector('[data-action=edit]').addEventListener('click', ()=>editSipInfo(sip.id));
+  const backfillBtn = card.querySelector('[data-action=backfill]');
+  if(backfillBtn) backfillBtn.addEventListener('click', ()=>backfillSipInstallments(sip.id));
   card.querySelector('[data-action=log]').addEventListener('click', ()=>{
     const el = document.getElementById('siplog-'+sip.id);
     el.style.display = el.style.display==='none' ? '' : 'none';
