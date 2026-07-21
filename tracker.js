@@ -16,6 +16,13 @@ const ASSET_CLASS_LABELS = {
   realestate:'Real Estate', vehicle:'Vehicle', other:'Other Asset'
 };
 
+// These asset types are tracked by amount, not units/shares — no quantity or
+// per-unit price math for them, just "how much is invested" and "what's it
+// worth now." (Equity, US Stocks, and Crypto keep real unit tracking, since
+// share/coin counts genuinely matter there.)
+const SIMPLE_VALUE_CLASSES = ['savings','fd','rd','epf','ppf','mf','liquidmf','gold','realestate','vehicle','other'];
+function isSimpleValueClass(assetClass){ return SIMPLE_VALUE_CLASSES.includes(assetClass); }
+
 function emptyNetWorthBucket(){
   return {
     holdings: [],
@@ -108,6 +115,21 @@ function loadData(){
   // into a single lot so no data is lost.
   ['INR','USD'].forEach(cur=>{
     netWorthData[cur].holdings = netWorthData[cur].holdings.map(migrateHolding);
+  });
+  // Migration: amount-based holdings (Savings/FD/RD/EPF/PPF/MF/Liquid MF/
+  // Gold/Real Estate/Vehicle/Other) must always have exactly one lot — if
+  // "Buy" was used more than once before this fix, multiple lots would have
+  // made quantity grow past 1, which silently multiplied the current value
+  // (quantity × currentPrice) incorrectly. Consolidate into a single lot,
+  // preserving the correct total invested amount.
+  ['INR','USD'].forEach(cur=>{
+    netWorthData[cur].holdings.forEach(h=>{
+      if(isSimpleValueClass(h.assetClass) && h.lots.length>1){
+        const totalCost = h.lots.reduce((s,l)=>s+l.quantity*l.price,0);
+        const latestDate = h.lots.reduce((max,l)=> l.date>max?l.date:max, h.lots[0].date);
+        h.lots = [{ id: nwUid(), date: latestDate, quantity: 1, price: totalCost }];
+      }
+    });
   });
   // Migration: Real Estate/Vehicles/Other used to be flat number fields —
   // convert any non-zero values into regular holdings so nothing is lost,
@@ -740,7 +762,7 @@ document.getElementById('addHolding').addEventListener('click', ()=>{
   const assetClass = document.getElementById('holdingClass').value;
   const name = document.getElementById('holdingName').value.trim();
   const qtyRaw = document.getElementById('holdingUnits').value;
-  const quantity = qtyRaw==='' ? 1 : +qtyRaw;
+  const quantity = isSimpleValueClass(assetClass) ? 1 : (qtyRaw==='' ? 1 : +qtyRaw);
   const price = +document.getElementById('holdingPrice').value;
   const date = document.getElementById('holdingDate').value || todayLocalISO();
   const currentPriceRaw = document.getElementById('holdingCurrentPrice').value;
@@ -776,6 +798,26 @@ document.getElementById('addHolding').addEventListener('click', ()=>{
 function buyHolding(id){
   const h = getNW().holdings.find(x=>x.id===id);
   if(!h) return;
+
+  if(isSimpleValueClass(h.assetClass)){
+    const raw = prompt(`Add to "${h.name}" — amount invested now:`, '');
+    if(!raw) return;
+    const amount = +raw;
+    if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+    const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
+    const date = dateRaw || todayLocalISO();
+    // Single-lot invariant: merge into the existing lot's cost basis rather
+    // than adding a new one, so quantity always stays exactly 1 and
+    // (quantity × currentPrice) never gets multiplied up by mistake.
+    if(h.lots.length===0) h.lots.push({ id: nwUid(), date, quantity:1, price:0 });
+    h.lots[0].price += amount;
+    h.lots[0].date = date;
+    h.currentPrice = (h.currentPrice||0) + amount;
+    saveData();
+    renderNetWorth();
+    return;
+  }
+
   const qtyRaw = prompt(`Buy more of "${h.name}" — quantity/units:`, '');
   if(!qtyRaw) return;
   const quantity = +qtyRaw;
@@ -796,6 +838,31 @@ function buyHolding(id){
 function sellHolding(id){
   const h = getNW().holdings.find(x=>x.id===id);
   if(!h) return;
+
+  if(isSimpleValueClass(h.assetClass)){
+    const currentValue = holdingCurrentValue(h);
+    if(currentValue<=0){ alert('Nothing left to withdraw.'); return; }
+    const raw = prompt(`Withdraw from "${h.name}" — amount (current value: ${fmtAmount(currentValue)}):`, '');
+    if(!raw) return;
+    const amount = +raw;
+    if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+    if(amount > currentValue){ alert('That is more than the current value.'); return; }
+    const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
+    const sellDate = dateRaw || todayLocalISO();
+
+    const proportion = amount / currentValue;
+    const costBasisRemoved = h.lots[0].price * proportion;
+    const daysHeld = daysBetween(h.lots[0].date, sellDate);
+    h.lots[0].price -= costBasisRemoved;
+    h.currentPrice -= amount;
+    const realizedPL = amount - costBasisRemoved;
+    h.sells = h.sells || [];
+    h.sells.push({ id: nwUid(), date: sellDate, amount, costBasis: costBasisRemoved, realizedPL, daysHeld });
+    saveData();
+    renderNetWorth();
+    return;
+  }
+
   const totalQty = holdingQuantity(h);
   if(totalQty<=0){ alert('Nothing left to sell.'); return; }
   const qtyRaw = prompt(`Sell from "${h.name}" — quantity/units (you hold ${totalQty}):`, '');
@@ -916,6 +983,24 @@ function editLot(holdingId, lotId){
   if(!h) return;
   const lot = h.lots.find(l=>l.id===lotId);
   if(!lot) return;
+
+  if(isSimpleValueClass(h.assetClass)){
+    const amtRaw = prompt('Invested amount:', lot.price);
+    if(amtRaw===null) return;
+    const amt = +amtRaw;
+    if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+    const dateRaw = prompt('Date (YYYY-MM-DD):', lot.date);
+    if(dateRaw===null) return;
+    const noteRaw = prompt('Note (optional):', lot.note||'');
+    if(noteRaw===null) return;
+    lot.quantity = 1;
+    lot.price = amt;
+    lot.date = dateRaw || lot.date;
+    lot.note = noteRaw.trim() || null;
+    saveData();
+    renderNetWorth();
+    return;
+  }
 
   const qtyRaw = prompt('Quantity/units for this buy:', lot.quantity);
   if(qtyRaw===null) return;
@@ -1060,6 +1145,7 @@ function buildHoldingCard(h, today){
   const daysHeld = oldestDate ? daysBetween(oldestDate, today) : null;
   const realizedPL = holdingRealizedPL(h);
   const sellCount = (h.sells||[]).length;
+  const simple = isSimpleValueClass(h.assetClass);
 
   const card = document.createElement('div');
   card.className = 'holding-card';
@@ -1071,17 +1157,19 @@ function buildHoldingCard(h, today){
     </div>
     ${h.note?`<div class="h-note">${escapeHtml(h.note)}</div>`:''}
     <div class="hc-stats">
+      ${simple ? '' : `
       <div class="h-figure"><span class="lbl">Units</span>${qty}</div>
       <div class="h-figure"><span class="lbl">Avg buy</span>${qty>0?fmtAmount(avgPrice):'—'}</div>
       <div class="h-figure"><span class="lbl">Current px</span>${fmtAmount(h.currentPrice)}</div>
+      `}
       <div class="h-figure"><span class="lbl">Invested</span>${fmtAmount(invested)}</div>
       <div class="h-figure"><span class="lbl">Value</span>${fmtAmount(currentValue)}</div>
       <div class="h-figure h-gain${unrealized<0?' loss':''}"><span class="lbl">Unrealized</span>${qty>0?(unrealized>=0?'+':'')+fmtAmount(unrealized)+' ('+unrealizedPct.toFixed(1)+'%)':'—'}</div>
     </div>
     ${realizedPL!==0?`<div class="h-realized ${realizedPL<0?'loss':''}" style="color:${realizedPL<0?'var(--brick)':'var(--green-deep)'};">Realized P&amp;L: ${realizedPL>=0?'+':''}${fmtAmount(realizedPL)} across ${sellCount} sale${sellCount===1?'':'s'}</div>`:''}
     <div class="h-actions">
-      <button class="buy" data-action="buy">+ Buy</button>
-      <button class="sell" data-action="sell" ${qty<=0?'disabled':''}>− Sell</button>
+      <button class="buy" data-action="buy">+ ${simple?'Add':'Buy'}</button>
+      <button class="sell" data-action="sell" ${(simple?currentValue<=0:qty<=0)?'disabled':''}>− ${simple?'Withdraw':'Sell'}</button>
       <button data-action="edit">✎ Edit name/type</button>
       <button data-action="mark">Update value</button>
       <button data-action="ticker">🔗 ${h.ticker?'Edit':'Set'} ticker</button>
@@ -1094,7 +1182,7 @@ function buildHoldingCard(h, today){
   `;
   card.querySelector('[data-action=buy]').addEventListener('click', ()=>buyHolding(h.id));
   const sellBtn = card.querySelector('[data-action=sell]');
-  if(qty>0) sellBtn.addEventListener('click', ()=>sellHolding(h.id));
+  if(simple ? currentValue>0 : qty>0) sellBtn.addEventListener('click', ()=>sellHolding(h.id));
   card.querySelector('[data-action=edit]').addEventListener('click', ()=>editHoldingInfo(h.id));
   card.querySelector('[data-action=mark]').addEventListener('click', ()=>updateHoldingValue(h.id));
   card.querySelector('[data-action=ticker]').addEventListener('click', ()=>setHoldingTicker(h.id));
@@ -1117,7 +1205,10 @@ function buildHoldingCard(h, today){
     const isDup = lotDupCounts[key] > 1;
     const row = document.createElement('div');
     row.className = 'log-row';
-    row.innerHTML = `<span>Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}${isDup?' <span class="dup-badge" title="Another buy on this holding has the same date, quantity, and price">⚠ possible duplicate</span>':''}</span>`;
+    const lotText = simple
+      ? `Invested ${fmtAmount(l.price)} as of ${l.date}${l.note?' — '+escapeHtml(l.note):''}`
+      : `Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}`;
+    row.innerHTML = `<span>${lotText}${isDup?' <span class="dup-badge" title="Another buy on this holding has the same date, quantity, and price">⚠ possible duplicate</span>':''}</span>`;
     const editBtn = document.createElement('button');
     editBtn.textContent = '✎';
     editBtn.title = 'Edit this entry';
@@ -1133,7 +1224,10 @@ function buildHoldingCard(h, today){
   (h.sells||[]).forEach(s=>{
     const row = document.createElement('div');
     row.className = 'log-row';
-    row.innerHTML = `<span>Sold ${s.quantity} unit${s.quantity===1?'':'s'} at ${fmtAmount(s.price)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}</span>`;
+    const sellText = simple
+      ? `Withdrew ${fmtAmount(s.amount)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}`
+      : `Sold ${s.quantity} unit${s.quantity===1?'':'s'} at ${fmtAmount(s.price)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}`;
+    row.innerHTML = `<span>${sellText}</span>`;
     const delBtn = document.createElement('button');
     delBtn.textContent = '×';
     delBtn.title = 'Delete this entry';
