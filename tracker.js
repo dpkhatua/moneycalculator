@@ -317,24 +317,6 @@ function deleteTx(id){
   renderAll();
 }
 
-// Deletes every transaction matching the current month/type/category/tag
-// filters — meant for cleaning up a bad import in one go: filter down to
-// just the category (or tag) you want gone, then delete all of them at once.
-document.getElementById('deleteFiltered').addEventListener('click', ()=>{
-  const filtered = getFilteredTx();
-  if(filtered.length===0){ alert('Nothing matches the current filters.'); return; }
-  const total = filtered.reduce((s,t)=>s+t.amount,0);
-  const incomeCount = filtered.filter(t=>t.type==='income').length;
-  const expenseCount = filtered.filter(t=>t.type==='expense').length;
-  if(!confirm(`Delete ${filtered.length} transaction(s) matching the current filters — ${incomeCount} income, ${expenseCount} expense, totaling ${fmtAmount(total)}?\n\nThis can't be undone. Double-check your filters above before confirming.`)) return;
-  const idsToDelete = new Set(filtered.map(t=>t.id));
-  idsToDelete.forEach(markDeleted);
-  transactions = transactions.filter(t=>!idsToDelete.has(t.id));
-  saveData();
-  renderAll();
-  alert(`Deleted ${filtered.length} transaction(s).`);
-});
-
 // ---------- Filters ----------
 function monthKey(dateStr){ return dateStr.slice(0,7); } // YYYY-MM
 function txInCurrentCurrency(){ return transactions.filter(t=>t.currency===currentCurrency); }
