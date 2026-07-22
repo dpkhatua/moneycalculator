@@ -317,6 +317,24 @@ function deleteTx(id){
   renderAll();
 }
 
+// Deletes every transaction matching the current month/type/category/tag
+// filters — meant for cleaning up a bad import in one go: filter down to
+// just the category (or tag) you want gone, then delete all of them at once.
+document.getElementById('deleteFiltered').addEventListener('click', ()=>{
+  const filtered = getFilteredTx();
+  if(filtered.length===0){ alert('Nothing matches the current filters.'); return; }
+  const total = filtered.reduce((s,t)=>s+t.amount,0);
+  const incomeCount = filtered.filter(t=>t.type==='income').length;
+  const expenseCount = filtered.filter(t=>t.type==='expense').length;
+  if(!confirm(`Delete ${filtered.length} transaction(s) matching the current filters — ${incomeCount} income, ${expenseCount} expense, totaling ${fmtAmount(total)}?\n\nThis can't be undone. Double-check your filters above before confirming.`)) return;
+  const idsToDelete = new Set(filtered.map(t=>t.id));
+  idsToDelete.forEach(markDeleted);
+  transactions = transactions.filter(t=>!idsToDelete.has(t.id));
+  saveData();
+  renderAll();
+  alert(`Deleted ${filtered.length} transaction(s).`);
+});
+
 // ---------- Filters ----------
 function monthKey(dateStr){ return dateStr.slice(0,7); } // YYYY-MM
 function txInCurrentCurrency(){ return transactions.filter(t=>t.currency===currentCurrency); }
@@ -554,11 +572,24 @@ function renderYearlyStats(){
   wrap.innerHTML = html;
 }
 
+function populateMonthlyCategoryYearFilter(){
+  const sel = document.getElementById('monthlyCategoryYear');
+  const prevValue = sel.value;
+  const expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense');
+  const years = [...new Set(expenseTx.map(t=>t.date.slice(0,4)))].sort().reverse();
+  sel.innerHTML = '<option value="__all__">All years</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+  else if(years.length>0) sel.value = years[0]; // default to most recent year
+}
+document.getElementById('monthlyCategoryYear').addEventListener('change', renderMonthlyCategoryTable);
+
 function renderMonthlyCategoryTable(){
   const wrap = document.getElementById('monthlyCategoryTable');
-  const expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense');
+  const selectedYear = document.getElementById('monthlyCategoryYear').value;
+  let expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense');
+  if(selectedYear && selectedYear!=='__all__') expenseTx = expenseTx.filter(t=>t.date.slice(0,4)===selectedYear);
   if(expenseTx.length===0){
-    wrap.innerHTML = '<div class="empty-state">No expenses logged yet.</div>';
+    wrap.innerHTML = '<div class="empty-state">No expenses logged yet for this selection.</div>';
     return;
   }
   // Months present, most recent first; categories actually used, alphabetical.
@@ -3032,6 +3063,7 @@ function renderAll(){
   renderCategoryChart();
   renderTrendChart();
   renderYearlyStats();
+  populateMonthlyCategoryYearFilter();
   renderMonthlyCategoryTable();
   renderTagBreakdown();
   syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
