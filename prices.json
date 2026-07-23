@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 65161.9883,
+    "price": 65118.0,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1881.92,
+    "price": 1880.1899,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -208,7 +208,7 @@
     "currency": "INR"
   },
   "HEROMOTOCO.NS": {
-    "price": 5173.7998,
+    "price": 5098.7998,
     "currency": "INR"
   },
   "HINDALCO.NS": {
@@ -408,7 +408,7 @@
     "currency": "INR"
   },
   "CROMPTON.NS": {
-    "price": 252.45,
+    "price": 249.45,
     "currency": "INR"
   },
   "DEEPAKNTR.NS": {
@@ -499,5 +499,5 @@
     "price": 1800.7,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-23T22:46:17.649978+00:00"
+  "updatedAt": "2026-07-23T23:47:27.687710+00:00"
 }
