@@ -3380,6 +3380,7 @@ function setupCollapsibleSection(headId, arrowId, bodyId, storageKey){
 }
 setupCollapsibleSection('lendingSectionHead','lendingArrow','lendingSectionBody','spendingTracker.collapsed.lending');
 setupCollapsibleSection('remitSectionHead','remitArrow','remitSectionBody','spendingTracker.collapsed.remit');
+setupCollapsibleSection('manageCatSectionHead','manageCatArrow','manageCatSectionBody','spendingTracker.collapsed.manageCat');
 setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
 setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
