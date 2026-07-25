@@ -1,1034 +1,3897 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spending Tracker — The Compound Ledger</title>
-<meta name="description" content="A private, offline spending tracker. Your data stays on this device.">
-<meta name="referrer" content="strict-origin-when-cross-origin">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; base-uri 'self'; form-action 'self'; object-src 'none';">
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1F6F50">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Spending Tracker">
-<link rel="apple-touch-icon" href="icon-192.png">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<script src="chart.min.js"></script>
-<style>
-  :root{
-    --paper:#EAEFE6;
-    --paper-raised:#F5F7F0;
-    --ink:#1B2A22;
-    --ink-soft:#4B5A50;
-    --rule:#c7cdb9;
-    --green:#1F6F50;
-    --green-deep:#153F30;
-    --mustard:#C98A2C;
-    --brick:#A2452F;
-    --shadow: 0 1px 0 rgba(27,42,34,0.06);
-  }
-  *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;}
-  body{
-    margin:0;
-    background:
-      linear-gradient(var(--paper),var(--paper)),
-      repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(27,42,34,0.05) 28px),
-      repeating-linear-gradient(90deg, transparent, transparent 27px, rgba(27,42,34,0.035) 28px);
-    color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  @media (prefers-reduced-motion: reduce){ *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;} }
-  a{color:inherit;}
-  .wrap{max-width:1040px;margin:0 auto;padding:0 24px;}
 
-  header.hero{ padding:48px 0 32px; border-bottom:1px solid var(--rule); }
-  .masthead{
-    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
-    margin-bottom:36px;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;
-    letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-soft);
-  }
-  .masthead .mark{display:flex;align-items:center;gap:10px;color:var(--ink);font-weight:600;}
-  .mark .dot{width:9px;height:9px;border-radius:50%;background:var(--green);display:inline-block;}
-  .masthead a.back{color:var(--ink-soft);text-decoration:none;border-bottom:1px dashed var(--rule);}
-  .masthead a.back:hover{color:var(--ink);border-color:var(--ink-soft);}
-  .hero h1{
-    font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-optical-sizing:auto;font-weight:600;
-    font-size:clamp(2rem,4.6vw,3.4rem);line-height:1.05;margin:0 0 14px;letter-spacing:-0.01em;
-  }
-  .hero h1 em{font-style:italic;color:var(--green);}
-  .hero p.sub{max-width:600px;font-size:16px;line-height:1.55;color:var(--ink-soft);margin:0;}
-  .privacy-note{
-    display:flex;gap:10px;align-items:flex-start;margin-top:22px;padding:14px 16px;
-    background:var(--paper-raised);border:1px solid var(--rule);border-left:3px solid var(--mustard);
-    font-size:13.5px;line-height:1.5;color:var(--ink-soft);max-width:680px;
-  }
-  .privacy-note b{color:var(--ink);}
+const STORAGE_KEY = 'spendingTracker.transactions.v1';
+const CATEGORY_KEY = 'spendingTracker.categories.v1';
+const CURRENCY_KEY = 'spendingTracker.currentCurrency';
+const NETWORTH_KEY = 'spendingTracker.netWorth.v1';
+const BUDGET_KEY = 'spendingTracker.budgets.v1';
+const DELETED_KEY = 'spendingTracker.deletedIds.v1';
+const REMIT_KEY = 'spendingTracker.remittances.v1';
+// Tracks the exportedAt timestamp of the last backup this device has fully
+// incorporated (pushed or pulled). Used to tell whether an incoming backup
+// is newer than what this device already knows, which determines whether
+// overlapping records should be treated as edits (overwrite) or left alone.
+const SYNC_TS_KEY = 'spendingTracker.lastSyncTimestamp';
+function getLastSyncTimestamp(){ return localStorage.getItem(SYNC_TS_KEY) || ''; }
+function setLastSyncTimestamp(ts){ if(ts) localStorage.setItem(SYNC_TS_KEY, ts); }
 
-  .currency-toggle{display:flex;gap:10px;margin-bottom:24px;}
-  .currency-toggle button{
-    flex:1;padding:14px 16px;border:1px solid var(--rule);background:var(--paper-raised);cursor:pointer;
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;font-weight:600;
-    letter-spacing:0.02em;color:var(--ink-soft);text-align:left;
-  }
-  .currency-toggle button .big{display:block;font-size:16px;margin-top:2px;color:var(--ink);}
-  .currency-toggle button.active{border-color:var(--green);background:#fff;box-shadow:inset 0 0 0 1px var(--green);}
-  .currency-toggle button.active .big{color:var(--green-deep);}
+const DEFAULT_CATEGORIES = {
+  expense: ['Food','Transport','Housing','Utilities','Shopping','Entertainment','Health','Education','Other'],
+  income: ['Salary','Business','Investment','Gift','Other']
+};
 
-  main{padding:36px 0 80px;}
+const ASSET_CLASS_LABELS = {
+  savings:'Savings', fd:'FD', rd:'RD', epf:'EPF', ppf:'PPF', equity:'Equity', mf:'Mutual Fund',
+  liquidmf:'Liquid/Short MF', gold:'Gold/Silver', crypto:'Crypto', usstock:'US Stocks',
+  realestate:'Real Estate', vehicle:'Vehicle', other:'Other Asset'
+};
 
-  /* Summary cards */
-  .summary-grid{
-    display:grid;grid-template-columns:repeat(3,1fr);gap:0;
-    border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:36px;
-  }
-  @media (max-width:800px){ .summary-grid{grid-template-columns:repeat(2,1fr);} }
-  .summary-card{padding:22px 20px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);}
-  .summary-card:nth-child(3n){border-right:none;}
-  .summary-card:nth-last-child(-n+3){border-bottom:none;}
-  @media (max-width:800px){
-    .summary-card{border-right:1px solid var(--rule);}
-    .summary-card:nth-child(3n){border-right:1px solid var(--rule);}
-    .summary-card:nth-child(2n){border-right:none;}
-    .summary-card:nth-last-child(-n+3){border-bottom:1px solid var(--rule);}
-    .summary-card:nth-last-child(-n+2){border-bottom:none;}
-  }
-  .summary-card .label{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;}
-  .summary-card .value{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;font-size:1.5rem;color:var(--green-deep);}
-  .summary-card .value.brick{color:var(--brick);}
+// These asset types are tracked by amount, not units/shares — no quantity or
+// per-unit price math for them, just "how much is invested" and "what's it
+// worth now." (Equity, US Stocks, and Crypto keep real unit tracking, since
+// share/coin counts genuinely matter there.)
+const SIMPLE_VALUE_CLASSES = ['savings','fd','rd','epf','ppf','mf','liquidmf','gold','realestate','vehicle','other'];
+function isSimpleValueClass(assetClass){ return SIMPLE_VALUE_CLASSES.includes(assetClass); }
 
-  /* Section headers */
-  .section-head{display:flex;align-items:baseline;gap:16px;margin:0 0 6px;flex-wrap:wrap;justify-content:space-between;}
-  .section-head.collapsible{cursor:pointer;user-select:none;padding:4px 0;}
-  .section-head.collapsible:hover h2{color:var(--green-deep);}
-  .section-arrow{color:var(--mustard);font-size:15px;margin-right:8px;display:inline-block;width:12px;}
-  .section-head h2{font-family:Georgia,'Iowan Old Style','Times New Roman',serif;font-weight:600;font-size:1.5rem;margin:0;}
-  .section-desc{color:var(--ink-soft);font-size:14px;margin:6px 0 20px;}
+function emptyNetWorthBucket(){
+  return {
+    holdings: [],
+    liabilities: { homeLoan:0, carLoan:0, ccDebt:0, personalLoan:0, otherLiability:0 },
+    lending: [], // money lent to people — intentionally never included in net worth totals
+    sips: [],    // ongoing SIPs — installments auto-log on their due date
+    insurance: [], // ongoing insurance policies
+    recurringExpenses: [], // "definite spending" — fixed bills that auto-log as real expenses on schedule
+    swps: [], // Systematic Withdrawal (and optional transfer-into-SIP): auto-withdraws from one holding, optionally auto-invests into another
+    wealthSnapshots: [] // { month:'YYYY-MM', netWorth, investedValue, currentValue } — one entry per month, refreshed each time you open the tracker that month. Can't be reconstructed for months before this feature existed, since past market values were never recorded.
+  };
+}
 
-  /* Form */
-  .tracker-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:0;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:44px;}
-  @media (max-width:820px){ .tracker-grid{grid-template-columns:1fr;} }
-  .form-col{padding:28px;border-right:1px solid var(--rule);}
-  @media (max-width:820px){ .form-col{border-right:none;border-bottom:1px solid var(--rule);} }
-  .list-col{padding:28px;display:flex;flex-direction:column;}
+let transactions = [];
+let categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+let netWorthData = { INR: emptyNetWorthBucket(), USD: emptyNetWorthBucket() };
+let budgets = { INR: {}, USD: {} }; // { category: monthlyBudgetAmount }, per currency
+// Tombstones — IDs of anything you've explicitly deleted (transactions,
+// holdings, lending records, SIPs, insurance, recurring expenses). Checked
+// during every merge (import / Drive restore) so a deletion can never be
+// silently undone by an older backup that still has the item in it.
+let deletedIds = new Set();
+function markDeleted(id){ if(id) deletedIds.add(id); }
+function isDeleted(id){ return deletedIds.has(id); }
+// USA → India money transfers — spans both currencies at once (USD sent,
+// INR received), so unlike everything else this isn't split into per-currency
+// buckets. Not counted in net worth (it's a transfer, not new wealth).
+let remittances = [];
+let currentType = 'expense';
+let editingId = null;
+// currentCurrency is the single "which country am I looking at" lens: it decides
+// what currency new transactions are logged in AND what the summary/list/charts
+// show. Switching it never mixes USD and INR totals together.
+let currentCurrency = localStorage.getItem(CURRENCY_KEY) || 'INR';
 
-  .field{margin-bottom:16px;}
-  .field label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:6px;font-weight:500;}
-  .field input, .field select{
-    width:100%;padding:10px 12px;border:1px solid var(--rule);background:#fff;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:var(--ink);
-  }
-  .field input[type=number]{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;}
-  .type-toggle{display:flex;gap:8px;margin-bottom:16px;}
-  .type-toggle button{
-    flex:1;padding:10px;border:1px solid var(--rule);background:#fff;cursor:pointer;
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;
-    color:var(--ink-soft);
-  }
-  .type-toggle button.active[data-type="expense"]{background:var(--brick);color:#fff;border-color:var(--brick);}
-  .type-toggle button.active[data-type="income"]{background:var(--green);color:#fff;border-color:var(--green);}
-  .btn-primary{
-    width:100%;padding:12px;border:none;background:var(--green-deep);color:#fff;cursor:pointer;
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;font-weight:600;letter-spacing:0.03em;text-transform:uppercase;
-  }
-  .btn-primary:hover{background:var(--green);}
-  .btn-secondary{
-    padding:9px 14px;border:1px solid var(--rule);background:#fff;color:var(--ink);cursor:pointer;
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;font-weight:600;letter-spacing:0.02em;
-  }
-  .btn-secondary:hover{background:var(--paper);}
-  .form-note{font-size:12px;color:var(--ink-soft);margin-top:14px;line-height:1.5;}
+function inr(n){
+  n = Math.round(n);
+  if(!isFinite(n)) n = 0;
+  const neg = n < 0;
+  n = Math.abs(n);
+  let s = n.toString();
+  let last3 = s.slice(-3);
+  let rest = s.slice(0,-3);
+  if(rest !== '') last3 = ',' + last3;
+  let formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + last3;
+  return (neg?'-':'') + '₹' + formatted;
+}
+function usd(n){
+  n = Math.round(n*100)/100;
+  if(!isFinite(n)) n = 0;
+  const neg = n < 0;
+  n = Math.abs(n);
+  return (neg?'-':'') + '$' + n.toLocaleString('en-US', {minimumFractionDigits: n%1===0?0:2, maximumFractionDigits:2});
+}
+function fmtAmount(n, currency){
+  return (currency||currentCurrency)==='USD' ? usd(n) : inr(n);
+}
 
-  /* Filter bar */
-  .filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;}
-  .filter-bar select, .filter-bar input{
-    padding:8px 10px;border:1px solid var(--rule);background:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:var(--ink);
+// ---- Timezone-safe date helpers ----
+// Date-only strings like "2026-07-15" get parsed by `new Date(...)` as UTC
+// midnight. Anyone west of UTC (all of the US) then sees it roll back to the
+// previous day once displayed in local time. These helpers work entirely in
+// local time so "today" and displayed dates always match the calendar date
+// you actually meant, regardless of timezone.
+function todayLocalISO(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function thisMonthLocal(){ return todayLocalISO().slice(0,7); }
+function parseLocalDate(dateStr){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y, m-1, d); // local time, no UTC shift
+}
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    transactions = raw ? JSON.parse(raw) : [];
+  } catch(e){ transactions = []; }
+  try{
+    const rawCat = localStorage.getItem(CATEGORY_KEY);
+    categories = rawCat ? JSON.parse(rawCat) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  } catch(e){ categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)); }
+  try{
+    const rawNW = localStorage.getItem(NETWORTH_KEY);
+    const parsed = rawNW ? JSON.parse(rawNW) : null;
+    netWorthData = {
+      INR: Object.assign(emptyNetWorthBucket(), parsed && parsed.INR),
+      USD: Object.assign(emptyNetWorthBucket(), parsed && parsed.USD)
+    };
+  } catch(e){ netWorthData = { INR: emptyNetWorthBucket(), USD: emptyNetWorthBucket() }; }
+  // Migration: holdings created before quantity/price tracking get converted
+  // into a single lot so no data is lost.
+  ['INR','USD'].forEach(cur=>{
+    netWorthData[cur].holdings = netWorthData[cur].holdings.map(migrateHolding);
+  });
+  // Migration: amount-based holdings (Savings/FD/RD/EPF/PPF/MF/Liquid MF/
+  // Gold/Real Estate/Vehicle/Other) must always have exactly one lot — if
+  // "Buy" was used more than once before this fix, multiple lots would have
+  // made quantity grow past 1, which silently multiplied the current value
+  // (quantity × currentPrice) incorrectly. Consolidate into a single lot,
+  // preserving the correct total invested amount and moving the original
+  // per-buy history into investmentLog so nothing is lost.
+  ['INR','USD'].forEach(cur=>{
+    netWorthData[cur].holdings.forEach(h=>{
+      if(isSimpleValueClass(h.assetClass) && h.lots.length>1){
+        const totalCost = h.lots.reduce((s,l)=>s+l.quantity*l.price,0);
+        const latestDate = h.lots.reduce((max,l)=> l.date>max?l.date:max, h.lots[0].date);
+        const earliestDate = h.lots.reduce((min,l)=> l.date<min?l.date:min, h.lots[0].date);
+        if(!h.investmentLog){
+          h.investmentLog = h.lots.map(l=>({ id: l.id, date: l.date, amount: l.quantity*l.price, note: l.note||null }));
+        }
+        h.lots = [{ id: nwUid(), date: earliestDate, quantity: 1, price: totalCost }];
+        h.lots[0].date = earliestDate;
+        void latestDate; // kept for clarity; earliestDate is what "held since" should use
+      }
+    });
+  });
+  // Migration: every simple-value holding needs an investmentLog (a running,
+  // editable history of each contribution) — seed one from the single lot if
+  // it doesn't have one yet, so older holdings get history too.
+  ['INR','USD'].forEach(cur=>{
+    netWorthData[cur].holdings.forEach(h=>{
+      if(isSimpleValueClass(h.assetClass) && !h.investmentLog){
+        h.investmentLog = h.lots.length>0
+          ? [{ id: nwUid(), date: h.lots[0].date, amount: h.lots[0].price, note: h.lots[0].note||null }]
+          : [];
+      }
+    });
+  });
+  // Migration: SIP installments logged before "postedToHolding" tracking
+  // existed don't have that flag at all. Rather than assuming they were (or
+  // weren't) posted, check the linked holding's own history for a matching
+  // date+amount entry — if it's genuinely there, mark it posted so Backfill
+  // won't double-count it; if it's missing, leave it eligible for backfill.
+  ['INR','USD'].forEach(cur=>{
+    const bucket = netWorthData[cur];
+    bucket.sips.forEach(sip=>{
+      const holding = sip.linkedHoldingId ? bucket.holdings.find(h=>h.id===sip.linkedHoldingId) : null;
+      sip.installments.forEach(inst=>{
+        if(inst.postedToHolding !== undefined) return;
+        if(!holding){ inst.postedToHolding = false; return; }
+        const alreadyThere = isSimpleValueClass(holding.assetClass)
+          ? (holding.investmentLog||[]).some(e=>e.date===inst.date && Math.abs(e.amount-inst.amount)<0.01)
+          : (holding.lots||[]).some(l=>l.date===inst.date && Math.abs(l.price-inst.amount)<0.01);
+        inst.postedToHolding = alreadyThere;
+      });
+    });
+  });
+  // Migration: Real Estate/Vehicles/Other used to be flat number fields —
+  // convert any non-zero values into regular holdings so nothing is lost,
+  // then drop the old fields.
+  ['INR','USD'].forEach(cur=>{
+    const bucket = netWorthData[cur];
+    const flat = bucket.flatAssets;
+    if(flat){
+      const today = todayLocalISO();
+      if(flat.realEstate>0) bucket.holdings.push({ id: nwUid(), assetClass:'realestate', name:'Real estate', currentPrice: flat.realEstate, lots:[{id:nwUid(), date:today, quantity:1, price:flat.realEstate}], sells:[] });
+      if(flat.vehicles>0) bucket.holdings.push({ id: nwUid(), assetClass:'vehicle', name:'Vehicles', currentPrice: flat.vehicles, lots:[{id:nwUid(), date:today, quantity:1, price:flat.vehicles}], sells:[] });
+      if(flat.otherAsset>0) bucket.holdings.push({ id: nwUid(), assetClass:'other', name:'Other assets', currentPrice: flat.otherAsset, lots:[{id:nwUid(), date:today, quantity:1, price:flat.otherAsset}], sells:[] });
+      delete bucket.flatAssets;
+    }
+  });
+  try{
+    const rawBudget = localStorage.getItem(BUDGET_KEY);
+    const parsedBudget = rawBudget ? JSON.parse(rawBudget) : null;
+    budgets = { INR: (parsedBudget && parsedBudget.INR) || {}, USD: (parsedBudget && parsedBudget.USD) || {} };
+  } catch(e){ budgets = { INR: {}, USD: {} }; }
+  try{
+    const rawDeleted = localStorage.getItem(DELETED_KEY);
+    deletedIds = new Set(rawDeleted ? JSON.parse(rawDeleted) : []);
+  } catch(e){ deletedIds = new Set(); }
+  try{
+    const rawRemit = localStorage.getItem(REMIT_KEY);
+    remittances = rawRemit ? JSON.parse(rawRemit) : [];
+  } catch(e){ remittances = []; }
+  // Migration: transactions logged before multi-currency support have no
+  // currency field — treat them as INR, since that was the only option then.
+  let migrated = false;
+  transactions.forEach(t=>{ if(!t.currency){ t.currency = 'INR'; migrated = true; } });
+  if(migrated) saveData();
+}
+function persistLocal(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+    localStorage.setItem(CATEGORY_KEY, JSON.stringify(categories));
+    localStorage.setItem(NETWORTH_KEY, JSON.stringify(netWorthData));
+    localStorage.setItem(BUDGET_KEY, JSON.stringify(budgets));
+    localStorage.setItem(DELETED_KEY, JSON.stringify([...deletedIds]));
+    localStorage.setItem(REMIT_KEY, JSON.stringify(remittances));
+  } catch(e){
+    alert('Could not save — your browser storage may be full or blocked (e.g. private browsing mode).');
   }
-  .filter-bar .spacer{flex:1;}
-
-  /* Transaction list */
-  .tx-list{flex:1;overflow-y:auto;max-height:520px;border-top:1px solid var(--rule);}
-  .tx-row{
-    display:grid;grid-template-columns:80px 1fr auto auto;gap:10px;align-items:center;
-    padding:11px 4px;border-bottom:1px solid var(--rule);font-size:13.5px;
+}
+// Use this when data just came FROM Drive, so we don't immediately push the
+// same thing straight back and cause a pointless round trip.
+function saveDataLocalOnly(){ persistLocal(); }
+// Use this for anything the person does locally (add/edit/delete) — it saves
+// to this device immediately, and also pushes to Drive in the background if
+// currently connected, so multi-device use feels like real syncing.
+function saveData(){
+  persistLocal();
+  if(typeof driveAccessToken !== 'undefined' && driveAccessToken && Date.now() < driveTokenExpiry-5000 && !driveSyncing){
+    pushToDrive(true);
   }
-  .tx-row .tx-date{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11.5px;color:var(--ink-soft);}
-  .tx-row .tx-main{min-width:0;}
-  .tx-row .tx-cat{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10.5px;letter-spacing:0.03em;text-transform:uppercase;color:var(--mustard);display:block;margin-bottom:2px;}
-  .dup-badge{
-    display:inline-block;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:9.5px;
-    letter-spacing:0.02em;text-transform:none;color:var(--brick);border:1px solid var(--brick);padding:1px 6px;
-    margin-left:6px;cursor:help;
+}
+
+function uid(){ return 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+
+function populateCategorySelect(){
+  const sel = document.getElementById('txCategory');
+  sel.innerHTML = '';
+  categories[currentType].forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  const addOpt = document.createElement('option');
+  addOpt.value = '__add_new__'; addOpt.textContent = '+ Add new category…';
+  sel.appendChild(addOpt);
+}
+document.getElementById('txCategory').addEventListener('change', (e)=>{
+  if(e.target.value === '__add_new__'){
+    const name = prompt('New category name:');
+    if(name && name.trim()){
+      const trimmed = name.trim();
+      if(!categories[currentType].includes(trimmed)) categories[currentType].push(trimmed);
+      saveData();
+      populateCategorySelect();
+      e.target.value = trimmed;
+    } else {
+      populateCategorySelect();
+    }
   }
+});
 
-  .notify-banner{border:1px solid var(--mustard);background:#fdf3e7;padding:14px 18px;}
-  .notify-banner .notify-title{font-weight:600;color:var(--ink);margin-bottom:8px;font-size:13.5px;}
-  .notify-row{display:flex;align-items:baseline;gap:10px;padding:4px 0;font-size:13px;flex-wrap:wrap;}
-  .notify-row .notify-when{
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;
-    padding:2px 7px;border:1px solid var(--brick);color:var(--brick);white-space:nowrap;
+// Category removal only affects new transactions/budgets — anything already
+// logged keeps its category label untouched, so past data is never silently
+// changed or orphaned.
+function removeCategory(type, name){
+  const usageCount = transactions.filter(t=>t.type===type && t.category===name).length;
+  const hasBudget = type==='expense' && (budgets.INR[name]!==undefined || budgets.USD[name]!==undefined);
+  let msg = `Remove "${name}" from your ${type} categories?`;
+  if(usageCount>0) msg += `\n\n${usageCount} existing transaction(s) use this category — they'll keep it as-is; you just won't be able to pick it for new ones.`;
+  if(hasBudget) msg += `\n\nIts budget (if set, in either currency) will be removed too.`;
+  if(!confirm(msg)) return;
+
+  categories[type] = categories[type].filter(c=>c!==name);
+  if(hasBudget){
+    delete budgets.INR[name];
+    delete budgets.USD[name];
   }
-  .notify-row .notify-when.soon{border-color:var(--mustard);color:var(--mustard);}
+  saveData();
+  renderCategoryManagement();
+  populateCategorySelect();
+  renderBudget();
+}
 
-  .cat-chip-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--rule);font-size:13.5px;}
-  .cat-chip-row:last-child{border-bottom:none;}
-  .cat-chip-row .cat-chip-name{flex:1;color:var(--ink);}
-  .cat-chip-row .cat-chip-count{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;color:var(--ink-soft);}
-  .cat-chip-row button{
-    background:none;border:1px solid var(--rule);width:24px;height:24px;flex:0 0 auto;cursor:pointer;
-    font-size:12px;color:var(--ink-soft);line-height:1;
+function renderCategoryManagement(){
+  ['expense','income'].forEach(type=>{
+    const wrap = document.getElementById(type==='expense' ? 'manageExpenseCategories' : 'manageIncomeCategories');
+    if(categories[type].length===0){ wrap.innerHTML = '<div class="empty-state">None yet.</div>'; return; }
+    wrap.innerHTML = '';
+    categories[type].slice().sort().forEach(name=>{
+      const count = transactions.filter(t=>t.type===type && t.category===name).length;
+      const row = document.createElement('div');
+      row.className = 'cat-chip-row';
+      row.innerHTML = `<span class="cat-chip-name">${escapeHtml(name)}</span><span class="cat-chip-count">${count>0?count+' used':''}</span>`;
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove this category';
+      delBtn.addEventListener('click', ()=>removeCategory(type, name));
+      row.appendChild(delBtn);
+      wrap.appendChild(row);
+    });
+  });
+}
+
+function setType(type){
+  currentType = type;
+  document.getElementById('typeExpenseBtn').classList.toggle('active', type==='expense');
+  document.getElementById('typeIncomeBtn').classList.toggle('active', type==='income');
+  populateCategorySelect();
+}
+document.getElementById('typeExpenseBtn').addEventListener('click', ()=>setType('expense'));
+document.getElementById('typeIncomeBtn').addEventListener('click', ()=>setType('income'));
+
+function resetForm(){
+  editingId = null;
+  document.getElementById('editNote').textContent = '';
+  document.getElementById('txSubmit').textContent = 'Add transaction';
+  document.getElementById('txDate').value = todayLocalISO();
+  document.getElementById('txDesc').value = '';
+  document.getElementById('txTag').value = '';
+  document.getElementById('txAmount').value = '';
+  setType('expense');
+}
+
+document.getElementById('txSubmit').addEventListener('click', ()=>{
+  const date = document.getElementById('txDate').value;
+  const category = document.getElementById('txCategory').value;
+  const desc = document.getElementById('txDesc').value.trim();
+  const tag = document.getElementById('txTag').value.trim();
+  const amount = +document.getElementById('txAmount').value;
+
+  if(!date){ alert('Pick a date.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+  if(category==='__add_new__'){ alert('Finish adding the new category first.'); return; }
+
+  if(editingId){
+    const tx = transactions.find(t=>t.id===editingId);
+    if(tx){ Object.assign(tx, {date, type:currentType, category, description:desc, tag:tag||null, amount, currency:currentCurrency}); }
+  } else {
+    transactions.push({ id: uid(), date, type: currentType, category, description: desc, tag: tag||null, amount, currency: currentCurrency });
   }
-  .cat-chip-row button:hover{background:var(--brick);border-color:var(--brick);color:#fff;}
-  .tx-row .tx-desc{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tx-row .tx-amt{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;white-space:nowrap;}
-  .tx-row .tx-amt.income{color:var(--green-deep);}
-  .tx-row .tx-amt.expense{color:var(--brick);}
-  .tx-row .tx-actions{display:flex;gap:4px;}
-  .tx-row .tx-actions button{
-    background:none;border:1px solid var(--rule);width:26px;height:26px;cursor:pointer;font-size:12px;color:var(--ink-soft);
+  saveData();
+  resetForm();
+  renderAll();
+});
+
+function startEdit(id){
+  const tx = transactions.find(t=>t.id===id);
+  if(!tx) return;
+  editingId = id;
+  setType(tx.type);
+  document.getElementById('txDate').value = tx.date;
+  document.getElementById('txDesc').value = tx.description;
+  document.getElementById('txTag').value = tx.tag || '';
+  document.getElementById('txAmount').value = tx.amount;
+  populateCategorySelect();
+  document.getElementById('txCategory').value = tx.category;
+  document.getElementById('txSubmit').textContent = 'Save changes';
+  document.getElementById('editNote').textContent = 'Editing an existing transaction — Save changes will update it in place.';
+  window.scrollTo({top: document.querySelector('.tracker-grid').offsetTop - 20, behavior:'smooth'});
+}
+function deleteTx(id){
+  if(!confirm('Delete this transaction? This can\'t be undone.')) return;
+  markDeleted(id);
+  transactions = transactions.filter(t=>t.id!==id);
+  saveData();
+  renderAll();
+}
+
+// ---------- Filters ----------
+function monthKey(dateStr){ return dateStr.slice(0,7); } // YYYY-MM
+function txInCurrentCurrency(){ return transactions.filter(t=>t.currency===currentCurrency); }
+function populateMonthFilter(){
+  const sel = document.getElementById('filterMonth');
+  const prevValue = sel.value;
+  const months = [...new Set(txInCurrentCurrency().map(t=>monthKey(t.date)))].sort().reverse();
+  sel.innerHTML = '<option value="__all__">All time</option>';
+  const thisMonth = thisMonthLocal();
+  if(!months.includes(thisMonth)) months.unshift(thisMonth);
+  months.forEach(m=>{
+    const opt = document.createElement('option');
+    opt.value = m;
+    const [y,mo] = m.split('-');
+    const label = new Date(y, mo-1, 1).toLocaleString('en-IN', {month:'long', year:'numeric'});
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+  else sel.value = thisMonth;
+}
+function populateCategoryFilter(){
+  const sel = document.getElementById('filterCategory');
+  const prevValue = sel.value;
+  const cats = [...new Set(txInCurrentCurrency().map(t=>t.category))].sort();
+  sel.innerHTML = '<option value="">All categories</option>';
+  cats.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  if(prevValue) sel.value = prevValue;
+}
+function populateTagFilter(){
+  const sel = document.getElementById('filterTag');
+  const prevValue = sel.value;
+  const tags = [...new Set(txInCurrentCurrency().map(t=>t.tag).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All tags</option>';
+  tags.forEach(tag=>{
+    const opt = document.createElement('option');
+    opt.value = tag; opt.textContent = tag;
+    sel.appendChild(opt);
+  });
+  if(prevValue) sel.value = prevValue;
+  // Also keep the "add transaction" tag field's autocomplete suggestions fresh.
+  const datalist = document.getElementById('txTagOptions');
+  datalist.innerHTML = tags.map(tag=>`<option value="${escapeHtml(tag)}">`).join('');
+}
+document.getElementById('filterMonth').addEventListener('change', renderAll);
+document.getElementById('filterType').addEventListener('change', renderAll);
+document.getElementById('filterCategory').addEventListener('change', renderAll);
+document.getElementById('filterTag').addEventListener('change', renderAll);
+
+function getFilteredTx(){
+  const month = document.getElementById('filterMonth').value;
+  const type = document.getElementById('filterType').value;
+  const cat = document.getElementById('filterCategory').value;
+  const tag = document.getElementById('filterTag').value;
+  return transactions.filter(t=>{
+    if(t.currency !== currentCurrency) return false;
+    if(month!=='__all__' && monthKey(t.date)!==month) return false;
+    if(type && t.type!==type) return false;
+    if(cat && t.category!==cat) return false;
+    if(tag && t.tag!==tag) return false;
+    return true;
+  });
+}
+
+// ---------- Rendering ----------
+function renderSummary(){
+  const thisMonth = thisMonthLocal();
+  const thisYear = todayLocalISO().slice(0,4);
+  const currencyTx = txInCurrentCurrency();
+  const monthTx = currencyTx.filter(t=>monthKey(t.date)===thisMonth);
+  const monthIncome = monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const monthExpense = monthTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  document.getElementById('sumMonthIncome').textContent = fmtAmount(monthIncome);
+  document.getElementById('sumMonthExpense').textContent = fmtAmount(monthExpense);
+  const netEl = document.getElementById('sumMonthNet');
+  netEl.textContent = fmtAmount(monthIncome-monthExpense);
+  netEl.classList.toggle('brick', monthIncome-monthExpense<0);
+
+  const yearTx = currencyTx.filter(t=>t.date.slice(0,4)===thisYear);
+  const yearIncome = yearTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const yearExpense = yearTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  document.getElementById('sumYearIncome').textContent = fmtAmount(yearIncome);
+  document.getElementById('sumYearExpense').textContent = fmtAmount(yearExpense);
+  const yearNetEl = document.getElementById('sumYearNet');
+  yearNetEl.textContent = fmtAmount(yearIncome-yearExpense);
+  yearNetEl.classList.toggle('brick', yearIncome-yearExpense<0);
+
+  const allIncome = currencyTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const allExpense = currencyTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  document.getElementById('sumAllIncome').textContent = fmtAmount(allIncome);
+  document.getElementById('sumAllExpense').textContent = fmtAmount(allExpense);
+  const balEl = document.getElementById('sumAllBalance');
+  balEl.textContent = fmtAmount(allIncome-allExpense);
+  balEl.classList.toggle('brick', allIncome-allExpense<0);
+}
+
+function escapeHtml(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, (m)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+// Flags transactions that share the same date, type, category, description,
+// and amount as another one — a strong signal of an accidental duplicate
+// (e.g. importing the same backup twice), without ever auto-deleting anything.
+function findDuplicateTxIds(){
+  const groups = {};
+  txInCurrentCurrency().forEach(t=>{
+    const key = [t.date, t.type, t.category, (t.description||'').trim().toLowerCase(), t.amount].join('|');
+    (groups[key] = groups[key] || []).push(t.id);
+  });
+  const dupIds = new Set();
+  Object.values(groups).forEach(ids=>{ if(ids.length>1) ids.forEach(id=>dupIds.add(id)); });
+  return dupIds;
+}
+
+function renderList(){
+  const list = document.getElementById('txList');
+  const filtered = getFilteredTx().slice().sort((a,b)=> b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  document.getElementById('txCount').textContent = filtered.length + ' transaction' + (filtered.length===1?'':'s');
+  if(filtered.length===0){
+    list.innerHTML = '<div class="empty-state">Nothing logged for this filter yet. Add a transaction on the left to get started.</div>';
+    return;
   }
-  .tx-row .tx-actions button:hover{background:var(--paper);color:var(--ink);}
-  .empty-state{padding:40px 4px;text-align:center;color:var(--ink-soft);font-size:14px;}
-
-  /* Net worth / holdings */
-  .nw-subhead{
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.08em;
-    text-transform:uppercase;color:var(--mustard);font-weight:600;margin:26px 0 12px;
-  }
-  .nw-subhead:first-child{margin-top:0;}
-  .holding-form{display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;margin-bottom:18px;align-items:end;}
-  .holding-form > div:last-child{grid-column:span 1;}
-  .holding-form label{display:block;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;}
-  .holding-form select, .holding-form input{
-    width:100%;padding:9px 10px;border:1px solid var(--rule);background:#fff;font-size:13.5px;color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-  }
-  .holding-form input[type=number]{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;}
-
-  .holding-list{display:flex;flex-direction:column;gap:10px;margin-bottom:8px;}
-
-  .cat-group{margin-bottom:10px;}
-  .cat-group-header{
-    display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;
-    background:var(--paper-raised);border:1px solid var(--rule);user-select:none;
-  }
-  .cat-group-header:hover{background:var(--paper);}
-  .cat-arrow{color:var(--mustard);font-size:11px;width:10px;}
-  .cat-group-name{font-weight:600;color:var(--ink);font-size:13.5px;}
-  .cat-group-meta{
-    margin-left:auto;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
-    font-size:12px;color:var(--ink-soft);
-  }
-  .cat-group-body{display:flex;flex-direction:column;gap:10px;padding-top:10px;}
-  .holding-card{
-    border:1px solid var(--rule);background:#fff;padding:14px 16px;font-size:13.5px;
-  }
-  .hc-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
-  .hc-top .h-class{
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10.5px;letter-spacing:0.03em;
-    text-transform:uppercase;color:var(--mustard);
-  }
-  .hc-top .h-name{color:var(--ink);font-weight:600;font-size:14.5px;}
-  .hc-top .h-meta{color:var(--ink-soft);font-size:12px;margin-left:auto;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;}
-  .hc-stats{display:grid;grid-template-columns:repeat(auto-fit, minmax(90px, 1fr));gap:10px;margin-bottom:12px;}
-  .hc-stats .h-figure{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;}
-  .hc-stats .h-figure .lbl{display:block;font-size:9.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;}
-  .hc-stats .h-gain{color:var(--green-deep);}
-  .hc-stats .h-gain.loss{color:var(--brick);}
-  .h-realized{font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;}
-  .h-note{font-size:12.5px;color:var(--ink-soft);font-style:italic;margin:-4px 0 10px;}
-  .h-actions{display:flex;gap:6px;flex-wrap:wrap;}
-  .h-actions button{
-    background:none;border:1px solid var(--rule);padding:5px 10px;cursor:pointer;font-size:12px;color:var(--ink-soft);
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
-  }
-  .h-actions button:hover{background:var(--paper);color:var(--ink);}
-  .h-actions button.buy{color:var(--green-deep);border-color:var(--green);}
-  .h-actions button.sell{color:var(--brick);border-color:var(--brick);}
-  .h-log{font-size:12px;color:var(--ink-soft);line-height:1.7;margin-top:10px;padding-top:10px;border-top:1px dashed var(--rule);}
-  .log-row{display:flex;align-items:center;gap:6px;padding:3px 0;}
-  .log-row span{flex:1;}
-  .log-row button{
-    background:none;border:1px solid var(--rule);width:22px;height:22px;flex:0 0 auto;cursor:pointer;
-    font-size:11px;color:var(--ink-soft);line-height:1;padding:0;
-  }
-  .log-row button:hover{background:var(--paper);color:var(--ink);}
-
-  .status-badge{
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10px;
-    letter-spacing:0.03em;text-transform:uppercase;padding:2px 7px;border:1px solid currentColor;
-  }
-  .status-badge.outstanding{color:var(--brick);}
-  .status-badge.partial{color:var(--mustard);}
-  .status-badge.repaid{color:var(--green-deep);}
-  .status-badge.due-soon{color:var(--mustard);}
-  .status-badge.overdue{color:var(--brick);}
-  .status-badge.stopped{color:var(--ink-soft);}
-
-  .nw-totals{display:flex;gap:28px;flex-wrap:wrap;margin:18px 0;}
-  .nw-totals .t{}
-  .nw-totals .t .lbl{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);margin-bottom:4px;}
-  .nw-totals .t .val{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;font-size:1.25rem;color:var(--ink);}
-  .nw-totals .t .val.big{font-size:1.7rem;color:var(--green-deep);}
-  .nw-totals .t .val.brick{color:var(--brick);}
-
-  .cat-table{width:100%;border-collapse:collapse;font-size:12.5px;}
-  .cat-table th{
-    text-align:left;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
-    font-size:10.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-soft);
-    padding:0 8px 8px 0;border-bottom:1px solid var(--rule);font-weight:600;
-  }
-  .cat-table td{padding:8px 8px 8px 0;border-bottom:1px solid var(--rule);color:var(--ink);}
-  .cat-table td.num{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;text-align:right;}
-  .cat-table td.num.gain{color:var(--green-deep);}
-  .cat-table td.num.loss{color:var(--brick);}
-  .cat-table tr.total-row td{border-top:2px solid var(--ink);border-bottom:none;font-weight:600;padding-top:10px;}
-  .cat-table .swatch{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;}
-
-  .budget-row{padding:12px 4px;border-bottom:1px solid var(--rule);}
-  .budget-row .b-top{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
-  .budget-row .b-cat{font-weight:600;color:var(--ink);font-size:13.5px;}
-  .budget-row .b-figures{margin-left:auto;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;color:var(--ink-soft);}
-  .budget-row .b-figures b{color:var(--ink);}
-  .budget-bar-track{height:8px;background:var(--paper);border:1px solid var(--rule);overflow:hidden;margin-bottom:6px;}
-  .budget-bar-fill{height:100%;background:var(--green);}
-  .budget-bar-fill.over{background:var(--brick);}
-  .budget-row .b-actions{display:flex;gap:6px;}
-  .budget-row .b-actions button{
-    background:none;border:1px solid var(--rule);padding:4px 9px;cursor:pointer;font-size:11.5px;color:var(--ink-soft);
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
-  }
-  .budget-row .b-actions button:hover{background:var(--paper);color:var(--ink);}
-
-  /* Charts section */
-  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:44px;}
-  @media (max-width:820px){ .charts-grid{grid-template-columns:1fr;} }
-  .chart-col{padding:28px;border-right:1px solid var(--rule);}
-  @media (max-width:820px){ .chart-col{border-right:none;border-bottom:1px solid var(--rule);} }
-  .chart-col h3{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 16px;}
-  .chart-wrap{height:240px;}
-
-  /* Data management */
-  .data-actions{display:flex;gap:10px;flex-wrap:wrap;padding:24px 28px;border:1px solid var(--rule);background:var(--paper-raised);}
-  .data-actions .danger{border-color:var(--brick);color:var(--brick);}
-  .data-actions .danger:hover{background:rgba(162,69,47,0.06);}
-
-  .drive-box{padding:24px 28px;border:1px solid var(--rule);background:var(--paper-raised);margin-bottom:20px;}
-  .drive-box .setup-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
-  .drive-box input[type=text]{
-    flex:1;min-width:220px;padding:9px 11px;border:1px solid var(--rule);background:#fff;
-    font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;color:var(--ink);
-  }
-  .drive-status{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12.5px;color:var(--ink-soft);margin:12px 0;}
-  .drive-status.connected{color:var(--green-deep);}
-  details.drive-setup{margin-bottom:16px;font-size:13.5px;color:var(--ink-soft);}
-  details.drive-setup summary{cursor:pointer;color:var(--ink);font-weight:500;margin-bottom:8px;}
-  details.drive-setup ol{margin:10px 0 0;padding-left:20px;line-height:1.7;}
-  details.drive-setup code{background:#fff;border:1px solid var(--rule);padding:1px 5px;font-size:12px;}
-
-  footer{border-top:1px solid var(--rule);padding:28px 0 60px;margin-top:44px;font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;color:var(--ink-soft);}
-</style>
-</head>
-<body>
-
-<header class="hero">
-  <div class="wrap">
-    <div class="masthead">
-      <div class="mark"><span class="dot"></span> Money Calculator for Indians made with Love ❤️</div>
-      <a class="back" href="index.html">← Back to calculators</a>
-    </div>
-    <h1>Track every rupee, <em>quietly</em>.</h1>
-    <p class="sub">Log what comes in and what goes out. No account, no server — everything is written straight to this browser's storage on this device.</p>
-    <div class="privacy-note">
-      <span>🔒</span>
-      <span><b>Your data never leaves this device.</b> It's saved in this browser's local storage, so it won't appear on another phone, laptop, or browser automatically. Use <b>Export backup</b> below to save a copy, and <b>Import backup</b> to bring it into another device or browser.</span>
-    </div>
-    <div class="privacy-note">
-      <span>📲</span>
-      <span><b>Add this to your home screen for the smoothest mobile experience.</b> It'll open full-screen like an app and keeps working without signal once loaded. <b>iPhone (Safari):</b> tap Share → Add to Home Screen. <b>Android (Chrome):</b> tap ⋮ → Add to Home screen / Install app.</span>
-    </div>
-  </div>
-</header>
-
-<main class="wrap">
-
-  <!-- Upcoming due dates: SIPs/Recurring within 5 days, Insurance within 30 -->
-  <div id="upcomingNotifications" style="display:none;margin-bottom:20px;"></div>
-
-  <!-- Summary -->
-  <div class="currency-toggle">
-    <button type="button" id="currencyUSA">🇺🇸 USA<span class="big">USD — $</span></button>
-    <button type="button" id="currencyIndia">🇮🇳 India<span class="big">INR — ₹</span></button>
-  </div>
-  <div id="backupReminder" style="display:none;margin-bottom:20px;padding:12px 16px;background:#fdf3e7;border:1px solid var(--mustard);font-size:13.5px;color:var(--ink);">
-    ⏰ It's been a while since your last backup. <button class="btn-secondary" id="reminderExportBtn" style="margin-left:8px;">Export backup now</button>
-    <button class="btn-secondary" id="reminderDismiss" style="margin-left:6px;">Dismiss</button>
-  </div>
-  <p class="section-desc" style="margin-top:-8px;">Everything below — summary, transactions, and charts — shows only the currency selected above. Switching never mixes USD and INR totals together.</p>
-  <div class="summary-grid">
-    <div class="summary-card"><div class="label">This month — income</div><div class="value" id="sumMonthIncome">₹0</div></div>
-    <div class="summary-card"><div class="label">This month — expenses</div><div class="value brick" id="sumMonthExpense">₹0</div></div>
-    <div class="summary-card"><div class="label">This month — net</div><div class="value" id="sumMonthNet">₹0</div></div>
-    <div class="summary-card"><div class="label">This year — income</div><div class="value" id="sumYearIncome">₹0</div></div>
-    <div class="summary-card"><div class="label">This year — expenses</div><div class="value brick" id="sumYearExpense">₹0</div></div>
-    <div class="summary-card"><div class="label">This year — net</div><div class="value" id="sumYearNet">₹0</div></div>
-    <div class="summary-card"><div class="label">All-time — income</div><div class="value" id="sumAllIncome">₹0</div></div>
-    <div class="summary-card"><div class="label">All-time — expenses</div><div class="value brick" id="sumAllExpense">₹0</div></div>
-    <div class="summary-card"><div class="label">All-time — balance</div><div class="value" id="sumAllBalance">₹0</div></div>
-  </div>
-
-  <!-- Add + list -->
-  <div class="section-head"><h2>Log &amp; transactions</h2></div>
-  <p class="section-desc">Add a transaction on the left; everything you've logged shows up on the right, newest first.</p>
-  <div class="tracker-grid">
-    <div class="form-col">
-      <div class="type-toggle">
-        <button type="button" data-type="expense" class="active" id="typeExpenseBtn">Expense</button>
-        <button type="button" data-type="income" id="typeIncomeBtn">Income</button>
+  const dupIds = findDuplicateTxIds();
+  list.innerHTML = '';
+  filtered.forEach(t=>{
+    const row = document.createElement('div');
+    row.className = 'tx-row';
+    const d = parseLocalDate(t.date);
+    const dateLabel = d.toLocaleDateString('en-IN', {day:'2-digit', month:'short'});
+    const isDup = dupIds.has(t.id);
+    row.innerHTML = `
+      <div class="tx-date">${escapeHtml(dateLabel)}</div>
+      <div class="tx-main">
+        <span class="tx-cat">${escapeHtml(t.category)}${t.tag?' · '+escapeHtml(t.tag):''}${isDup?' <span class="dup-badge" title="Same date, amount, category, and description as another transaction — check it is not a duplicate">⚠ possible duplicate</span>':''}</span>
+        <span class="tx-desc">${escapeHtml(t.description) || '—'}</span>
       </div>
-      <div class="field">
-        <label>Date</label>
-        <input type="date" id="txDate">
+      <div class="tx-amt ${t.type}">${t.type==='expense' ? '−' : '+'}${fmtAmount(t.amount, t.currency)}</div>
+      <div class="tx-actions">
+        <button title="Edit" data-action="edit">✎</button>
+        <button title="Delete" data-action="delete">×</button>
       </div>
-      <div class="field">
-        <label>Category</label>
-        <select id="txCategory"></select>
+    `;
+    row.querySelector('[data-action=edit]').addEventListener('click', ()=>startEdit(t.id));
+    row.querySelector('[data-action=delete]').addEventListener('click', ()=>deleteTx(t.id));
+    list.appendChild(row);
+  });
+}
+
+let charts = {};
+function drawChart(id, labels, datasets, opts, type){
+  type = type || 'bar';
+  const ctx = document.getElementById(id).getContext('2d');
+  if(charts[id]) charts[id].destroy();
+  const base = {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display: datasets.length>1 || type==='doughnut', labels:{font:{family:'ui-monospace, Menlo, Consolas, monospace',size:11}}},
+      tooltip:{callbacks:{label:(c)=>(c.dataset.label||'')+': '+fmtAmount(c.parsed.y!==undefined?c.parsed.y:c.parsed)}} },
+    scales: type==='doughnut' ? undefined : {
+      x:{ grid:{display:false}, ticks:{font:{family:'ui-monospace, Menlo, Consolas, monospace',size:10}} },
+      y:{ grid:{color:'rgba(27,42,34,0.08)'}, ticks:{font:{family:'ui-monospace, Menlo, Consolas, monospace',size:10}, callback:(v)=>{
+        if(currentCurrency==='USD') return '$'+v;
+        if(Math.abs(v)>=100000) return '₹'+(v/100000).toFixed(1)+'L';
+        return '₹'+v;
+      }} }
+    }
+  };
+  charts[id] = new Chart(ctx, { type, data:{ labels, datasets }, options: Object.assign(base, opts||{}) });
+}
+
+function renderCategoryChart(){
+  const filtered = getFilteredTx().filter(t=>t.type==='expense');
+  const byCat = {};
+  filtered.forEach(t=>{ byCat[t.category] = (byCat[t.category]||0) + t.amount; });
+  const labels = Object.keys(byCat);
+  const data = Object.values(byCat);
+  const palette = ['#1F6F50','#C98A2C','#A2452F','#4B5A50','#7a9e8f','#d9b06b','#c47a68','#8fa89d'];
+  if(labels.length===0){
+    drawChart('categoryChart', ['No expenses'], [{data:[1], backgroundColor:['#c7cdb9']}], {plugins:{legend:{display:false}}}, 'doughnut');
+    return;
+  }
+  drawChart('categoryChart', labels, [{ data, backgroundColor: labels.map((_,i)=>palette[i%palette.length]) }], {}, 'doughnut');
+}
+
+function renderTrendChart(){
+  const months = [];
+  const now = new Date();
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push(d.toISOString().slice(0,7));
+  }
+  const currencyTx = txInCurrentCurrency();
+  const incomeData = months.map(m => currencyTx.filter(t=>t.type==='income' && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0));
+  const expenseData = months.map(m => currencyTx.filter(t=>t.type==='expense' && monthKey(t.date)===m).reduce((s,t)=>s+t.amount,0));
+  const labels = months.map(m=>{
+    const [y,mo] = m.split('-');
+    return new Date(y, mo-1, 1).toLocaleString('en-IN', {month:'short'});
+  });
+  drawChart('trendChart', labels, [
+    {label:'Income', data:incomeData, backgroundColor:'#1F6F50'},
+    {label:'Expenses', data:expenseData, backgroundColor:'#A2452F'}
+  ], {}, 'bar');
+}
+
+function renderYearlyStats(){
+  const wrap = document.getElementById('yearlyStatsTable');
+  const currencyTx = txInCurrentCurrency();
+  if(currencyTx.length===0){
+    wrap.innerHTML = '<div class="empty-state">Nothing logged yet.</div>';
+    return;
+  }
+  const years = [...new Set(currencyTx.map(t=>t.date.slice(0,4)))].sort().reverse();
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Year</th><th style="text-align:right;">Income</th><th style="text-align:right;">Expenses</th><th style="text-align:right;">Net</th></tr></thead>
+      <tbody>
+  `;
+  years.forEach(year=>{
+    const yearTx = currencyTx.filter(t=>t.date.slice(0,4)===year);
+    const income = yearTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+    const expense = yearTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+    const net = income-expense;
+    html += `
+      <tr>
+        <td>${year}</td>
+        <td class="num">${fmtAmount(income)}</td>
+        <td class="num">${fmtAmount(expense)}</td>
+        <td class="num ${net<0?'loss':'gain'}">${net>=0?'+':''}${fmtAmount(net)}</td>
+      </tr>
+    `;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function populateMonthlyCategoryYearFilter(){
+  const sel = document.getElementById('monthlyCategoryYear');
+  const prevValue = sel.value;
+  const expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense');
+  const years = [...new Set(expenseTx.map(t=>t.date.slice(0,4)))].sort().reverse();
+  sel.innerHTML = '<option value="__all__">All years</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+  else if(years.length>0) sel.value = years[0]; // default to most recent year
+}
+document.getElementById('monthlyCategoryYear').addEventListener('change', renderMonthlyCategoryTable);
+
+function renderMonthlyCategoryTable(){
+  const wrap = document.getElementById('monthlyCategoryTable');
+  const selectedYear = document.getElementById('monthlyCategoryYear').value;
+  let expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense');
+  if(selectedYear && selectedYear!=='__all__') expenseTx = expenseTx.filter(t=>t.date.slice(0,4)===selectedYear);
+  if(expenseTx.length===0){
+    wrap.innerHTML = '<div class="empty-state">No expenses logged yet for this selection.</div>';
+    return;
+  }
+  // Months present, most recent first; categories actually used, alphabetical.
+  const months = [...new Set(expenseTx.map(t=>monthKey(t.date)))].sort().reverse();
+  const cats = [...new Set(expenseTx.map(t=>t.category))].sort();
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Month</th>${cats.map(c=>`<th style="text-align:right;">${escapeHtml(c)}</th>`).join('')}<th style="text-align:right;">Total</th></tr></thead>
+      <tbody>
+  `;
+  months.forEach(m=>{
+    const monthTx = expenseTx.filter(t=>monthKey(t.date)===m);
+    const [y,mo] = m.split('-');
+    const label = new Date(y, mo-1, 1).toLocaleString('en-IN', {month:'short', year:'numeric'});
+    let monthTotal = 0;
+    const cells = cats.map(cat=>{
+      const sum = monthTx.filter(t=>t.category===cat).reduce((s,t)=>s+t.amount,0);
+      monthTotal += sum;
+      return `<td class="num">${sum>0?fmtAmount(sum):'—'}</td>`;
+    }).join('');
+    html += `<tr><td>${label}</td>${cells}<td class="num" style="font-weight:600;">${fmtAmount(monthTotal)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderTagBreakdown(){
+  const wrap = document.getElementById('tagBreakdownTable');
+  const expenseTx = txInCurrentCurrency().filter(t=>t.type==='expense' && t.tag);
+  if(expenseTx.length===0){
+    wrap.innerHTML = '<div class="empty-state">No tagged transactions yet — add a tag when logging a transaction (e.g. a person or household name).</div>';
+    return;
+  }
+  const byTag = {};
+  expenseTx.forEach(t=>{ byTag[t.tag] = (byTag[t.tag]||0) + t.amount; });
+  const tags = Object.keys(byTag).sort((a,b)=>byTag[b]-byTag[a]);
+  const total = tags.reduce((s,t)=>s+byTag[t],0);
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Tag</th><th style="text-align:right;">Total spent</th><th style="text-align:right;">% of tagged spending</th></tr></thead>
+      <tbody>
+  `;
+  tags.forEach(tag=>{
+    const amt = byTag[tag];
+    const pct = total>0 ? (amt/total)*100 : 0;
+    html += `
+      <tr>
+        <td>${escapeHtml(tag)}</td>
+        <td class="num">${fmtAmount(amt)}</td>
+        <td class="num">${pct.toFixed(1)}%</td>
+      </tr>
+    `;
+  });
+  html += `
+      <tr class="total-row">
+        <td>Total</td>
+        <td class="num">${fmtAmount(total)}</td>
+        <td class="num">100%</td>
+      </tr>
+    </tbody></table>
+  `;
+  wrap.innerHTML = html;
+}
+
+// ---------- Budget Plan ----------
+function getBudgets(){ return budgets[currentCurrency]; }
+
+function populateBudgetCategorySelect(){
+  const sel = document.getElementById('budgetCategory');
+  const prevValue = sel.value;
+  sel.innerHTML = '';
+  categories.expense.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+}
+
+document.getElementById('saveBudget').addEventListener('click', ()=>{
+  const category = document.getElementById('budgetCategory').value;
+  const amount = +document.getElementById('budgetAmount').value;
+  if(!category){ alert('Pick a category.'); return; }
+  if(!amount || amount<=0){ alert('Enter a budget amount greater than zero.'); return; }
+  getBudgets()[category] = amount;
+  saveData();
+  document.getElementById('budgetAmount').value = '';
+  renderBudget();
+});
+
+function removeBudget(category){
+  if(!confirm(`Remove the budget for "${category}"?`)) return;
+  delete getBudgets()[category];
+  saveData();
+  renderBudget();
+}
+function editBudget(category){
+  const current = getBudgets()[category];
+  const raw = prompt(`Monthly budget for "${category}":`, current);
+  if(raw===null) return;
+  const amt = +raw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  getBudgets()[category] = amt;
+  saveData();
+  renderBudget();
+}
+
+function renderBudgetList(){
+  const wrap = document.getElementById('budgetList');
+  const budgetMap = getBudgets();
+  const cats = Object.keys(budgetMap);
+  if(cats.length===0){
+    wrap.innerHTML = '<div class="empty-state">No category budgets set yet — add one above.</div>';
+    return;
+  }
+  const thisMonth = thisMonthLocal();
+  const monthExpenseTx = txInCurrentCurrency().filter(t=>t.type==='expense' && monthKey(t.date)===thisMonth);
+
+  wrap.innerHTML = '';
+  cats.sort().forEach(cat=>{
+    const budgeted = budgetMap[cat];
+    const spent = monthExpenseTx.filter(t=>t.category===cat).reduce((s,t)=>s+t.amount,0);
+    const remaining = budgeted - spent;
+    const pct = budgeted>0 ? Math.min(100, (spent/budgeted)*100) : 0;
+    const over = spent>budgeted;
+
+    const row = document.createElement('div');
+    row.className = 'budget-row';
+    row.innerHTML = `
+      <div class="b-top">
+        <span class="b-cat">${escapeHtml(cat)}</span>
+        <span class="b-figures"><b>${fmtAmount(spent)}</b> of ${fmtAmount(budgeted)} — ${over?'over by '+fmtAmount(Math.abs(remaining)):fmtAmount(remaining)+' left'}</span>
       </div>
-      <div class="field">
-        <label>Description</label>
-        <input type="text" id="txDesc" placeholder="e.g. Groceries, Uber, Salary" maxlength="200">
+      <div class="budget-bar-track"><div class="budget-bar-fill${over?' over':''}" style="width:${pct}%;"></div></div>
+      <div class="b-actions">
+        <button data-action="edit">✎ Edit</button>
+        <button data-action="del">× Remove</button>
       </div>
-      <div class="field">
-        <label>Tag <span style="font-weight:400;color:var(--ink-soft);">(optional — who/what it's for)</span></label>
-        <input type="text" id="txTag" placeholder="e.g. Dipu, Home, Roji" maxlength="60" list="txTagOptions">
-        <datalist id="txTagOptions"></datalist>
-      </div>
-      <div class="field">
-        <label>Amount <span id="txAmountCurrency" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;color:var(--ink);">₹</span></label>
-        <input type="number" id="txAmount" min="0" step="1" placeholder="0">
-      </div>
-      <button class="btn-primary" id="txSubmit">Add transaction</button>
-      <div class="form-note" id="editNote"></div>
+    `;
+    row.querySelector('[data-action=edit]').addEventListener('click', ()=>editBudget(cat));
+    row.querySelector('[data-action=del]').addEventListener('click', ()=>removeBudget(cat));
+    wrap.appendChild(row);
+  });
+}
+
+function renderBudgetSummary(){
+  const budgetMap = getBudgets();
+  const cats = Object.keys(budgetMap);
+  const thisMonth = thisMonthLocal();
+  const monthExpenseTx = txInCurrentCurrency().filter(t=>t.type==='expense' && monthKey(t.date)===thisMonth);
+  const totalPlanned = cats.reduce((s,c)=>s+budgetMap[c],0);
+  const totalSpent = cats.reduce((s,c)=>s+monthExpenseTx.filter(t=>t.category===c).reduce((s2,t)=>s2+t.amount,0),0);
+  document.getElementById('budgetTotalPlanned').textContent = fmtAmount(totalPlanned);
+  document.getElementById('budgetTotalSpent').textContent = fmtAmount(totalSpent);
+  const remEl = document.getElementById('budgetTotalRemaining');
+  remEl.textContent = fmtAmount(totalPlanned-totalSpent);
+  remEl.classList.toggle('brick', totalPlanned-totalSpent<0);
+}
+
+function renderBudget(){
+  populateBudgetCategorySelect();
+  renderBudgetList();
+  renderBudgetSummary();
+}
+
+
+// ---------- Net Worth ----------
+function getNW(){ return netWorthData[currentCurrency]; }
+
+function nwUid(){ return 'nw_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+
+function daysBetween(dateStr1, dateStr2){
+  const d1 = parseLocalDate(dateStr1), d2 = parseLocalDate(dateStr2);
+  return Math.round((d2 - d1) / (1000*60*60*24));
+}
+
+// Adds n months to a YYYY-MM-DD date, clamping to the last day of the target
+// month if the original day doesn't exist there (e.g. Jan 31 + 1 month -> Feb 28).
+function addMonthsClamped(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const totalMonthIndex = (m-1) + n;
+  const targetYear = y + Math.floor(totalMonthIndex/12);
+  const targetMonth = ((totalMonthIndex%12)+12)%12; // 0-based
+  const lastDay = new Date(targetYear, targetMonth+1, 0).getDate();
+  const day = Math.min(d, lastDay);
+  return `${targetYear}-${String(targetMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+function addDays(dateStr, n){
+  const d = parseLocalDate(dateStr);
+  d.setDate(d.getDate()+n);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// Generic "advance by one period" for any frequency (weekly = days, monthly/quarterly = months).
+function advanceDate(dateStr, unit, value){
+  return unit==='days' ? addDays(dateStr, value) : addMonthsClamped(dateStr, value);
+}
+const SIP_FREQ_LABEL = { 'days:7':'Weekly', 'months:1':'Monthly', 'months:3':'Quarterly' };
+function sipFrequencyLabel(sip){ return SIP_FREQ_LABEL[`${sip.frequencyUnit}:${sip.frequencyValue}`] || `Every ${sip.frequencyValue} ${sip.frequencyUnit}`; }
+// Normalizes any frequency into a comparable monthly-equivalent figure, so
+// mixed weekly/monthly/quarterly SIPs can still be summed into one commitment total.
+function sipMonthlyEquivalent(sip){
+  if(sip.frequencyUnit==='days') return sip.amount * (30.44/sip.frequencyValue);
+  return sip.amount / sip.frequencyValue;
+}
+function periodsPerYear(unit, value){ return unit==='days' ? 365/value : 12/value; }
+function sipPaidThisYear(sip){
+  const year = todayLocalISO().slice(0,4);
+  return sip.installments.filter(i=>i.date.slice(0,4)===year).reduce((s,i)=>s+i.amount,0);
+}
+function sipYearlyRequirement(sip){ return sip.amount * periodsPerYear(sip.frequencyUnit, sip.frequencyValue); }
+function sipNeededThisYear(sip){ return Math.max(0, sipYearlyRequirement(sip) - sipPaidThisYear(sip)); }
+
+// ---- Derived figures from a holding's lot history (all computed, nothing stored redundantly) ----
+function holdingQuantity(h){ return h.lots.reduce((s,l)=>s+l.quantity, 0); }
+function holdingInvested(h){ return h.lots.reduce((s,l)=>s+l.quantity*l.price, 0); }
+function holdingAvgPrice(h){ const q = holdingQuantity(h); return q>0 ? holdingInvested(h)/q : 0; }
+function holdingCurrentValue(h){ return holdingQuantity(h) * (h.currentPrice||0); }
+function holdingOldestLotDate(h){
+  if(h.lots.length===0) return null;
+  return h.lots.reduce((min,l)=> l.date < min ? l.date : min, h.lots[0].date);
+}
+function holdingRealizedPL(h){ return (h.sells||[]).reduce((s,x)=>s+x.realizedPL, 0); }
+
+// Old holdings (before quantity/price tracking) get converted into a single
+// lot of quantity 1 at the old invested amount, so nothing is lost — you can
+// keep using them as-is, or edit the quantity/price going forward.
+// For simple-value holdings, investmentLog is the editable source of truth
+// (every contribution, manual or SIP-driven, as its own entry). The single
+// lot is just a derived total kept in sync with it, so the value math
+// (quantity × currentPrice) stays correct without ever needing a second lot.
+function recomputeSimpleLot(h){
+  const total = (h.investmentLog||[]).reduce((s,e)=>s+e.amount,0);
+  const oldestDate = (h.investmentLog||[]).reduce((min,e)=> (!min||e.date<min) ? e.date : min, null) || todayLocalISO();
+  if(h.lots.length===0) h.lots.push({ id: nwUid(), date: oldestDate, quantity:1, price:0 });
+  h.lots[0].quantity = 1;
+  h.lots[0].price = total;
+  h.lots[0].date = oldestDate;
+}
+
+// Shared "deposit into a holding automatically" used by both SIP installments
+// and SWP transfers — same logic as a manual "+ Buy"/"+ Add", just without prompts.
+function postContributionToHolding(holding, date, amount, note){
+  if(isSimpleValueClass(holding.assetClass)){
+    holding.investmentLog = holding.investmentLog || [];
+    holding.investmentLog.push({ id: nwUid(), date, amount, note });
+    recomputeSimpleLot(holding);
+  } else {
+    holding.lots.push({ id: nwUid(), date, quantity: 1, price: amount, note });
+  }
+}
+
+// Shared "withdraw from a holding automatically" used by SWP — same math as
+// the manual "− Sell"/"− Withdraw" flow, just without prompts, and capped at
+// whatever the holding is actually worth (so it can never go negative).
+function withdrawFromHoldingAuto(holding, date, amount){
+  const currentValue = holdingCurrentValue(holding);
+  if(currentValue<=0) return { withdrawn:0, realizedPL:0, shortfall:true };
+  const actual = Math.min(amount, currentValue);
+  let realizedPL = 0;
+
+  if(isSimpleValueClass(holding.assetClass)){
+    const proportion = actual / currentValue;
+    const costBasisRemoved = holding.lots[0].price * proportion;
+    const daysHeld = daysBetween(holding.lots[0].date, date);
+    (holding.investmentLog||[]).forEach(e=>{ e.amount = e.amount * (1-proportion); });
+    recomputeSimpleLot(holding);
+    holding.currentPrice -= actual;
+    realizedPL = actual - costBasisRemoved;
+    holding.sells = holding.sells || [];
+    holding.sells.push({ id: nwUid(), date, amount: actual, costBasis: costBasisRemoved, realizedPL, daysHeld });
+  } else {
+    const sellQty = holding.currentPrice>0 ? actual / holding.currentPrice : 0;
+    holding.lots.sort((a,b)=>a.date.localeCompare(b.date));
+    let remaining = sellQty, costBasisTotal=0, weightedDaysSum=0;
+    const newLots=[];
+    for(const lot of holding.lots){
+      if(remaining<=0){ newLots.push(lot); continue; }
+      if(lot.quantity<=remaining){
+        costBasisTotal += lot.quantity*lot.price;
+        weightedDaysSum += lot.quantity*daysBetween(lot.date, date);
+        remaining -= lot.quantity;
+      } else {
+        costBasisTotal += remaining*lot.price;
+        weightedDaysSum += remaining*daysBetween(lot.date, date);
+        newLots.push({ id: lot.id, date: lot.date, quantity: lot.quantity-remaining, price: lot.price });
+        remaining = 0;
+      }
+    }
+    holding.lots = newLots;
+    realizedPL = actual - costBasisTotal;
+    const daysHeld = sellQty>0 ? Math.round(weightedDaysSum/sellQty) : 0;
+    holding.sells = holding.sells || [];
+    holding.sells.push({ id: nwUid(), date, quantity: sellQty, price: holding.currentPrice, costBasis: costBasisTotal, realizedPL, daysHeld });
+  }
+  return { withdrawn: actual, realizedPL, shortfall: actual<amount-0.01 };
+}
+
+function migrateHolding(h){
+  if(h.lots) return h;
+  return {
+    id: h.id, assetClass: h.assetClass, name: h.name,
+    currentPrice: h.current!=null ? h.current : (h.invested||0),
+    lots: [{ id: nwUid(), date: (h.log && h.log[0] && h.log[0].date) || todayLocalISO(), quantity: 1, price: h.invested||0 }],
+    sells: []
+  };
+}
+
+document.getElementById('addHolding').addEventListener('click', ()=>{
+  const assetClass = document.getElementById('holdingClass').value;
+  const name = document.getElementById('holdingName').value.trim();
+  const qtyRaw = document.getElementById('holdingUnits').value;
+  const quantity = isSimpleValueClass(assetClass) ? 1 : (qtyRaw==='' ? 1 : +qtyRaw);
+  const price = +document.getElementById('holdingPrice').value;
+  const date = document.getElementById('holdingDate').value || todayLocalISO();
+  const currentPriceRaw = document.getElementById('holdingCurrentPrice').value;
+  const currentPrice = currentPriceRaw==='' ? price : +currentPriceRaw;
+  const ticker = document.getElementById('holdingTicker').value.trim();
+  const note = document.getElementById('holdingNote').value.trim();
+
+  if(!name){ alert('Give this holding a name.'); return; }
+  if(!price || price<=0){ alert('Enter a buy price greater than zero.'); return; }
+  if(!quantity || quantity<=0){ alert('Enter a quantity/units greater than zero.'); return; }
+
+  getNW().holdings.push({
+    id: nwUid(),
+    assetClass,
+    name,
+    ticker: ticker || null,
+    note: note || null,
+    currentPrice,
+    lots: [{ id: nwUid(), date, quantity, price }],
+    sells: [],
+    investmentLog: isSimpleValueClass(assetClass) ? [{ id: nwUid(), date, amount: price, note: null }] : undefined
+  });
+  saveData();
+  document.getElementById('holdingName').value = '';
+  document.getElementById('holdingUnits').value = '1';
+  document.getElementById('holdingPrice').value = '';
+  document.getElementById('holdingCurrentPrice').value = '';
+  document.getElementById('holdingTicker').value = '';
+  document.getElementById('holdingNote').value = '';
+  document.getElementById('holdingDate').value = todayLocalISO();
+  renderNetWorth();
+});
+
+function buyHolding(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+
+  if(isSimpleValueClass(h.assetClass)){
+    const raw = prompt(`Add to "${h.name}" — amount invested now:`, '');
+    if(!raw) return;
+    const amount = +raw;
+    if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+    const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
+    const date = dateRaw || todayLocalISO();
+    const noteRaw = prompt('Note (optional):', '') || '';
+    h.investmentLog = h.investmentLog || [];
+    h.investmentLog.push({ id: nwUid(), date, amount, note: noteRaw.trim() || null });
+    recomputeSimpleLot(h);
+    h.currentPrice = (h.currentPrice||0) + amount;
+    saveData();
+    renderNetWorth();
+    return;
+  }
+
+  const qtyRaw = prompt(`Buy more of "${h.name}" — quantity/units:`, '');
+  if(!qtyRaw) return;
+  const quantity = +qtyRaw;
+  if(!quantity || quantity<=0){ alert('Enter a valid quantity.'); return; }
+  const priceRaw = prompt('Buy price per unit:', h.currentPrice || '');
+  if(!priceRaw) return;
+  const price = +priceRaw;
+  if(!price || price<=0){ alert('Enter a valid price.'); return; }
+  const dateRaw = prompt('Buy date (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+
+  h.lots.push({ id: nwUid(), date, quantity, price });
+  h.currentPrice = price;
+  saveData();
+  renderNetWorth();
+}
+
+function sellHolding(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+
+  if(isSimpleValueClass(h.assetClass)){
+    const currentValue = holdingCurrentValue(h);
+    if(currentValue<=0){ alert('Nothing left to withdraw.'); return; }
+    const raw = prompt(`Withdraw from "${h.name}" — amount (current value: ${fmtAmount(currentValue)}):`, '');
+    if(!raw) return;
+    const amount = +raw;
+    if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+    if(amount > currentValue){ alert('That is more than the current value.'); return; }
+    const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
+    const sellDate = dateRaw || todayLocalISO();
+
+    const proportion = amount / currentValue;
+    const costBasisRemoved = h.lots[0].price * proportion;
+    const daysHeld = daysBetween(h.lots[0].date, sellDate);
+    // Scale every historical contribution down by the same proportion, so
+    // investmentLog (the source of truth for invested amount) reflects the
+    // withdrawal, rather than editing the derived lot directly.
+    (h.investmentLog||[]).forEach(e=>{ e.amount = e.amount * (1-proportion); });
+    recomputeSimpleLot(h);
+    h.currentPrice -= amount;
+    const realizedPL = amount - costBasisRemoved;
+    h.sells = h.sells || [];
+    h.sells.push({ id: nwUid(), date: sellDate, amount, costBasis: costBasisRemoved, realizedPL, daysHeld });
+    saveData();
+    renderNetWorth();
+    return;
+  }
+
+  const totalQty = holdingQuantity(h);
+  if(totalQty<=0){ alert('Nothing left to sell.'); return; }
+  const qtyRaw = prompt(`Sell from "${h.name}" — quantity/units (you hold ${totalQty}):`, '');
+  if(!qtyRaw) return;
+  const sellQty = +qtyRaw;
+  if(!sellQty || sellQty<=0){ alert('Enter a valid quantity.'); return; }
+  if(sellQty > totalQty){ alert(`You only hold ${totalQty} units.`); return; }
+  const priceRaw = prompt('Sell price per unit:', h.currentPrice || '');
+  if(!priceRaw) return;
+  const sellPrice = +priceRaw;
+  if(!sellPrice || sellPrice<=0){ alert('Enter a valid price.'); return; }
+  const dateRaw = prompt('Sell date (YYYY-MM-DD):', todayLocalISO());
+  const sellDate = dateRaw || todayLocalISO();
+
+  // FIFO: consume the oldest lots first, splitting a lot if the sale only
+  // takes part of it. This is also what most tax authorities assume by
+  // default for holding-period purposes (oldest units sold first).
+  h.lots.sort((a,b)=>a.date.localeCompare(b.date));
+  let remaining = sellQty;
+  let costBasisTotal = 0;
+  let weightedDaysSum = 0;
+  const newLots = [];
+  for(const lot of h.lots){
+    if(remaining<=0){ newLots.push(lot); continue; }
+    if(lot.quantity<=remaining){
+      costBasisTotal += lot.quantity*lot.price;
+      weightedDaysSum += lot.quantity * daysBetween(lot.date, sellDate);
+      remaining -= lot.quantity;
+      // fully consumed — dropped from newLots
+    } else {
+      costBasisTotal += remaining*lot.price;
+      weightedDaysSum += remaining * daysBetween(lot.date, sellDate);
+      newLots.push({ id: lot.id, date: lot.date, quantity: lot.quantity-remaining, price: lot.price });
+      remaining = 0;
+    }
+  }
+  h.lots = newLots;
+  const realizedPL = sellQty*sellPrice - costBasisTotal;
+  const daysHeld = Math.round(weightedDaysSum/sellQty);
+  h.sells = h.sells || [];
+  h.sells.push({ id: nwUid(), date: sellDate, quantity: sellQty, price: sellPrice, costBasis: costBasisTotal, realizedPL, daysHeld });
+  h.currentPrice = sellPrice;
+  saveData();
+  renderNetWorth();
+}
+
+function updateHoldingValue(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  const raw = prompt(`Update current market price per unit of "${h.name}" (was ${fmtAmount(h.currentPrice)}):`, h.currentPrice);
+  if(raw===null || raw==='') return;
+  const val = +raw;
+  if(isNaN(val) || val<0){ alert('Enter a valid price.'); return; }
+  h.currentPrice = val;
+  saveData();
+  renderNetWorth();
+}
+function deleteHolding(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  if(!confirm(`Delete "${h.name}" entirely, including its buy/sell history? This can't be undone.`)) return;
+  markDeleted(id);
+  getNW().holdings = getNW().holdings.filter(x=>x.id!==id);
+  saveData();
+  renderNetWorth();
+}
+
+function toggleHoldingLog(id){
+  const el = document.getElementById('log-'+id);
+  if(el) el.style.display = el.style.display==='none' ? '' : 'none';
+}
+
+function setHoldingTicker(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  const raw = prompt(`Ticker / Coin ID for "${h.name}" (e.g. AAPL, bitcoin, RELIANCE.BSE):`, h.ticker||'');
+  if(raw===null) return;
+  h.ticker = raw.trim() || null;
+  saveData();
+  renderNetWorth();
+}
+
+function setHoldingNote(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  const raw = prompt(`A few words about "${h.name}":`, h.note||'');
+  if(raw===null) return;
+  h.note = raw.trim() || null;
+  saveData();
+  renderNetWorth();
+}
+
+function editHoldingInfo(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  const newName = prompt('Name:', h.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+
+  const validClasses = Object.keys(ASSET_CLASS_LABELS);
+  const classList = validClasses.map(c=>`${c} (${ASSET_CLASS_LABELS[c]})`).join(', ');
+  const newClass = prompt(`Asset type — enter one of:\n${classList}`, h.assetClass);
+  if(newClass===null) return;
+  const trimmedClass = newClass.trim();
+  if(trimmedClass && !validClasses.includes(trimmedClass)){
+    alert('Not a recognized asset type — nothing changed. Use one of the exact codes shown (e.g. "equity", "crypto").');
+    return;
+  }
+
+  h.name = newName.trim();
+  if(trimmedClass) h.assetClass = trimmedClass;
+  saveData();
+  renderNetWorth();
+}
+
+function editLot(holdingId, lotId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  const lot = h.lots.find(l=>l.id===lotId);
+  if(!lot) return;
+
+  const qtyRaw = prompt('Quantity/units for this buy:', lot.quantity);
+  if(qtyRaw===null) return;
+  const qty = +qtyRaw;
+  if(!qty || qty<=0){ alert('Enter a valid quantity.'); return; }
+
+  const priceRaw = prompt('Price per unit for this buy:', lot.price);
+  if(priceRaw===null) return;
+  const price = +priceRaw;
+  if(!price || price<=0){ alert('Enter a valid price.'); return; }
+
+  const dateRaw = prompt('Date (YYYY-MM-DD):', lot.date);
+  if(dateRaw===null) return;
+
+  const noteRaw = prompt('Note (optional):', lot.note||'');
+  if(noteRaw===null) return;
+
+  lot.quantity = qty;
+  lot.price = price;
+  lot.date = dateRaw || lot.date;
+  lot.note = noteRaw.trim() || null;
+  saveData();
+  renderNetWorth();
+}
+
+function deleteLot(holdingId, lotId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  if(h.lots.length===1 && (!h.sells || h.sells.length===0)){
+    if(!confirm('This is the only buy on this holding — deleting it will remove the whole holding. Continue?')) return;
+    getNW().holdings = getNW().holdings.filter(x=>x.id!==holdingId);
+    saveData();
+    renderNetWorth();
+    return;
+  }
+  if(!confirm('Delete this buy entry?')) return;
+  h.lots = h.lots.filter(l=>l.id!==lotId);
+  saveData();
+  renderNetWorth();
+}
+
+// For simple-value holdings, each contribution (manual or SIP) is its own
+// editable/deletable entry in investmentLog — the single lot is just kept in
+// sync with it via recomputeSimpleLot, never edited directly.
+function editInvestmentLogEntry(holdingId, entryId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  const entry = (h.investmentLog||[]).find(e=>e.id===entryId);
+  if(!entry) return;
+  const amtRaw = prompt('Amount:', entry.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', entry.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', entry.note||'');
+  if(noteRaw===null) return;
+  entry.amount = amt;
+  entry.date = dateRaw || entry.date;
+  entry.note = noteRaw.trim() || null;
+  recomputeSimpleLot(h);
+  saveData();
+  renderNetWorth();
+}
+function deleteInvestmentLogEntry(holdingId, entryId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  if(h.investmentLog.length===1 && (!h.sells || h.sells.length===0)){
+    if(!confirm('This is the only contribution on this holding — deleting it will remove the whole holding. Continue?')) return;
+    getNW().holdings = getNW().holdings.filter(x=>x.id!==holdingId);
+    saveData();
+    renderNetWorth();
+    return;
+  }
+  if(!confirm('Delete this entry?')) return;
+  h.investmentLog = h.investmentLog.filter(e=>e.id!==entryId);
+  recomputeSimpleLot(h);
+  saveData();
+  renderNetWorth();
+}
+
+function deleteSell(holdingId, sellId){
+  const h = getNW().holdings.find(x=>x.id===holdingId);
+  if(!h) return;
+  if(!confirm('Delete this sell record?\n\nNote: this removes it from your history and realized P&L, but doesn\'t automatically restore the sold units back into the holding — if you need those units back, use "+ Buy" to re-add them at the correct price.')) return;
+  h.sells = (h.sells||[]).filter(s=>s.id!==sellId);
+  saveData();
+  renderNetWorth();
+}
+
+// ---- Auto price fetch: a scheduled GitHub Action fetches prices (US stocks,
+// Indian NSE/BSE stocks, and crypto, all via one source) and publishes them
+// to prices.json in this repo. The browser just reads that file — nothing
+// calls an external API directly, so there's no key to manage here and no
+// CORS uncertainty. See tickers.json and .github/workflows/update-prices.yml.
+async function fetchPricesJson(){
+  try{
+    const res = await fetch('./prices.json', { cache: 'no-store' });
+    if(!res.ok) return null;
+    return await res.json();
+  } catch(e){ return null; }
+}
+
+function resolvePrice(entry, pricesData){
+  if(!entry) return { error: 'Ticker not found in prices.json — check tickers.json and that the Action has run' };
+  const wantCurrency = currentCurrency;
+  if(entry.currency === wantCurrency) return { price: entry.price };
+  const rate = pricesData && pricesData.usdToInr;
+  if(!rate) return { error: `Priced in ${entry.currency}, but you're viewing ${wantCurrency}, and no USD/INR rate was published to convert it` };
+  if(entry.currency==='USD' && wantCurrency==='INR') return { price: entry.price * rate };
+  if(entry.currency==='INR' && wantCurrency==='USD') return { price: entry.price / rate };
+  return { error: `Can't convert ${entry.currency} to ${wantCurrency}` };
+}
+
+async function refreshHoldingPrice(id){
+  const h = getNW().holdings.find(x=>x.id===id);
+  if(!h) return;
+  if(!h.ticker){ alert('Add a ticker/coin ID to this holding first (\uD83D\uDD17 button).'); return; }
+  const status = document.getElementById('priceRefreshStatus');
+  status.textContent = `Fetching ${h.name}\u2026`;
+  const pricesData = await fetchPricesJson();
+  if(!pricesData){ status.textContent = 'Could not load prices.json \u2014 has the GitHub Action run yet?'; return; }
+  const result = resolvePrice(pricesData[h.ticker], pricesData);
+  if(result.price!=null){
+    h.currentPrice = result.price;
+    saveData();
+    renderNetWorth();
+    status.textContent = `Updated ${h.name} to ${fmtAmount(result.price)}.`;
+  } else {
+    status.textContent = `Couldn't update ${h.name}: ${result.error} \u2014 update it manually instead.`;
+  }
+}
+
+document.getElementById('refreshAllPrices').addEventListener('click', async ()=>{
+  const status = document.getElementById('priceRefreshStatus');
+  const holdings = getNW().holdings.filter(h=>h.ticker);
+  if(holdings.length===0){ status.textContent = 'No holdings have a ticker/coin ID set yet.'; return; }
+  status.textContent = `Refreshing ${holdings.length} holding(s)\u2026`;
+  const pricesData = await fetchPricesJson();
+  if(!pricesData){ status.textContent = 'Could not load prices.json \u2014 has the GitHub Action run yet? Check the Actions tab in your repo.'; return; }
+  let updated = 0, failed = 0;
+  holdings.forEach(h=>{
+    const result = resolvePrice(pricesData[h.ticker], pricesData);
+    if(result.price!=null){ h.currentPrice = result.price; updated++; }
+    else failed++;
+  });
+  saveData();
+  renderNetWorth();
+  const updatedAt = pricesData.updatedAt ? new Date(pricesData.updatedAt).toLocaleString() : 'unknown time';
+  status.textContent = `Updated ${updated} holding(s)${failed>0?`, ${failed} not found/convertible \u2014 update those manually`:''}. Prices last published: ${updatedAt}.`;
+});
+
+
+const CATEGORY_GROUPS = [
+  { name: 'Bank & Deposits', classes: ['savings','fd','rd'] },
+  { name: 'Retirement', classes: ['epf','ppf'] },
+  { name: 'Equity', classes: ['equity'] },
+  { name: 'Mutual Fund', classes: ['mf'] },
+  { name: 'Liquid Fund', classes: ['liquidmf'] },
+  { name: 'Gold', classes: ['gold'] },
+  { name: 'International', classes: ['usstock'] },
+  { name: 'Other', classes: ['crypto','realestate','vehicle','other'] }
+];
+// Which category groups are currently expanded — resets on page reload,
+// same as any collapsible section. Collapsed by default so you only open
+// up the category you actually want to check.
+let categoryExpandState = {};
+
+function toggleCategoryGroup(name){
+  categoryExpandState[name] = !categoryExpandState[name];
+  renderHoldingsList();
+}
+
+function buildHoldingCard(h, today){
+  const qty = holdingQuantity(h);
+  const invested = holdingInvested(h);
+  const avgPrice = holdingAvgPrice(h);
+  const currentValue = holdingCurrentValue(h);
+  const unrealized = currentValue - invested;
+  const unrealizedPct = invested>0 ? (unrealized/invested)*100 : 0;
+  const oldestDate = holdingOldestLotDate(h);
+  const daysHeld = oldestDate ? daysBetween(oldestDate, today) : null;
+  const realizedPL = holdingRealizedPL(h);
+  const sellCount = (h.sells||[]).length;
+  const simple = isSimpleValueClass(h.assetClass);
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="h-class">${escapeHtml(ASSET_CLASS_LABELS[h.assetClass]||h.assetClass)}</span>
+      <span class="h-name">${escapeHtml(h.name)}${qty<=0?' (fully sold)':''}</span>
+      <span class="h-meta">${h.ticker?escapeHtml(h.ticker)+' · ':''}${daysHeld!==null&&qty>0?'Held '+daysHeld+' day'+(daysHeld===1?'':'s'):''}</span>
     </div>
-    <div class="list-col">
-      <div class="filter-bar">
-        <select id="filterMonth"></select>
-        <select id="filterType">
-          <option value="">All (income + expenses)</option>
-          <option value="income">Income only</option>
-          <option value="expense">Expenses only</option>
-        </select>
-        <select id="filterCategory"><option value="">All categories</option></select>
-        <select id="filterTag"><option value="">All tags</option></select>
-        <span class="spacer"></span>
-        <span id="txCount" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;color:var(--ink-soft);"></span>
-      </div>
-      <div class="tx-list" id="txList"></div>
+    ${h.note?`<div class="h-note">${escapeHtml(h.note)}</div>`:''}
+    <div class="hc-stats">
+      ${simple ? '' : `
+      <div class="h-figure"><span class="lbl">Units</span>${qty}</div>
+      <div class="h-figure"><span class="lbl">Avg buy</span>${qty>0?fmtAmount(avgPrice):'—'}</div>
+      <div class="h-figure"><span class="lbl">Current px</span>${fmtAmount(h.currentPrice)}</div>
+      `}
+      <div class="h-figure"><span class="lbl">Invested</span>${fmtAmount(invested)}</div>
+      <div class="h-figure"><span class="lbl">Value</span>${fmtAmount(currentValue)}</div>
+      <div class="h-figure h-gain${unrealized<0?' loss':''}"><span class="lbl">Unrealized</span>${qty>0?(unrealized>=0?'+':'')+fmtAmount(unrealized)+' ('+unrealizedPct.toFixed(1)+'%)':'—'}</div>
     </div>
-  </div>
-
-  <!-- Budget Plan -->
-  <div class="section-head collapsible" id="budgetSectionHead"><h2><span class="section-arrow" id="budgetArrow">▾</span>Budget plan</h2></div>
-  <div id="budgetSectionBody">
-  <p class="section-desc">Set a monthly budget per expense category and see how this month's actual spending stacks up against it. Follows the same currency toggle as everything else.</p>
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Set a category budget</div>
-      <div class="holding-form">
-        <div>
-          <label>Category</label>
-          <select id="budgetCategory"></select>
-        </div>
-        <div>
-          <label>Monthly budget</label>
-          <input type="number" id="budgetAmount" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <button class="btn-primary" id="saveBudget" style="padding:9px 16px;">+ Save</button>
-        </div>
-      </div>
+    ${realizedPL!==0?`<div class="h-realized ${realizedPL<0?'loss':''}" style="color:${realizedPL<0?'var(--brick)':'var(--green-deep)'};">Realized P&amp;L: ${realizedPL>=0?'+':''}${fmtAmount(realizedPL)} across ${sellCount} sale${sellCount===1?'':'s'}</div>`:''}
+    <div class="h-actions">
+      <button class="buy" data-action="buy">+ ${simple?'Add':'Buy'}</button>
+      <button class="sell" data-action="sell" ${(simple?currentValue<=0:qty<=0)?'disabled':''}>− ${simple?'Withdraw':'Sell'}</button>
+      <button data-action="edit">✎ Edit name/type</button>
+      <button data-action="mark">Update value</button>
+      <button data-action="ticker">🔗 ${h.ticker?'Edit':'Set'} ticker</button>
+      ${h.ticker?'<button data-action="refresh">🔄 Refresh</button>':''}
+      <button data-action="note">📝 ${h.note?'Edit':'Add'} note</button>
+      <button data-action="log">☰ Edit buys/sells</button>
+      <button data-action="del">× Delete</button>
     </div>
-  </div>
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Total budgeted (monthly)</div><div class="val" id="budgetTotalPlanned">0</div></div>
-    <div class="t"><div class="lbl">Spent this month (budgeted categories)</div><div class="val" id="budgetTotalSpent">0</div></div>
-    <div class="t"><div class="lbl">Remaining this month</div><div class="val" id="budgetTotalRemaining">0</div></div>
-  </div>
-  <div id="budgetList" style="margin-bottom:44px;"></div>
-  </div>
+    <div class="h-log" id="log-${h.id}" style="display:none;"></div>
+  `;
+  card.querySelector('[data-action=buy]').addEventListener('click', ()=>buyHolding(h.id));
+  const sellBtn = card.querySelector('[data-action=sell]');
+  if(simple ? currentValue>0 : qty>0) sellBtn.addEventListener('click', ()=>sellHolding(h.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editHoldingInfo(h.id));
+  card.querySelector('[data-action=mark]').addEventListener('click', ()=>updateHoldingValue(h.id));
+  card.querySelector('[data-action=ticker]').addEventListener('click', ()=>setHoldingTicker(h.id));
+  const refreshBtn = card.querySelector('[data-action=refresh]');
+  if(refreshBtn) refreshBtn.addEventListener('click', ()=>refreshHoldingPrice(h.id));
+  card.querySelector('[data-action=note]').addEventListener('click', ()=>setHoldingNote(h.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>toggleHoldingLog(h.id));
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteHolding(h.id));
 
-  <!-- Charts -->
-  <div class="section-head"><h2>Where it's going</h2></div>
-  <p class="section-desc">Based on whatever month is selected in the filter above.</p>
-  <div class="charts-grid">
-    <div class="chart-col">
-      <h3>Expenses by category</h3>
-      <div class="chart-wrap"><canvas id="categoryChart"></canvas></div>
+  // Build the buy/sell log with per-entry edit/delete controls (done as real
+  // DOM nodes, not string-joined text, so each entry can carry its own buttons).
+  const logEl = card.querySelector('.h-log');
+  if(simple){
+    (h.investmentLog||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(e=>{
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      row.innerHTML = `<span>Invested ${fmtAmount(e.amount)} on ${e.date}${e.note?' — '+escapeHtml(e.note):''}</span>`;
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit this entry';
+      editBtn.addEventListener('click', ()=>editInvestmentLogEntry(h.id, e.id));
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete this entry';
+      delBtn.addEventListener('click', ()=>deleteInvestmentLogEntry(h.id, e.id));
+      row.appendChild(editBtn);
+      row.appendChild(delBtn);
+      logEl.appendChild(row);
+    });
+  } else {
+    const lotDupCounts = {};
+    h.lots.forEach(l=>{
+      const key = [l.date, l.quantity, l.price].join('|');
+      lotDupCounts[key] = (lotDupCounts[key]||0)+1;
+    });
+    h.lots.forEach(l=>{
+      const key = [l.date, l.quantity, l.price].join('|');
+      const isDup = lotDupCounts[key] > 1;
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      const lotText = `Bought ${l.quantity} unit${l.quantity===1?'':'s'} at ${fmtAmount(l.price)} on ${l.date}${l.note?' — '+escapeHtml(l.note):''}`;
+      row.innerHTML = `<span>${lotText}${isDup?' <span class="dup-badge" title="Another buy on this holding has the same date, quantity, and price">⚠ possible duplicate</span>':''}</span>`;
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✎';
+      editBtn.title = 'Edit this entry';
+      editBtn.addEventListener('click', ()=>editLot(h.id, l.id));
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete this entry';
+      delBtn.addEventListener('click', ()=>deleteLot(h.id, l.id));
+      row.appendChild(editBtn);
+      row.appendChild(delBtn);
+      logEl.appendChild(row);
+    });
+  }
+  (h.sells||[]).forEach(s=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    const sellText = simple
+      ? `Withdrew ${fmtAmount(s.amount)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}`
+      : `Sold ${s.quantity} unit${s.quantity===1?'':'s'} at ${fmtAmount(s.price)} on ${s.date} — held ${s.daysHeld} day${s.daysHeld===1?'':'s'} — ${s.realizedPL>=0?'profit':'loss'} of ${fmtAmount(Math.abs(s.realizedPL))}`;
+    row.innerHTML = `<span>${sellText}</span>`;
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×';
+    delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteSell(h.id, s.id));
+    row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  const logEntryCount = simple ? (h.investmentLog||[]).length : h.lots.length;
+  if(logEntryCount===0 && (!h.sells || h.sells.length===0)){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No entries.</span>';
+  }
+
+  return card;
+}
+
+function renderHoldingsList(){
+  const wrap = document.getElementById('holdingList');
+  const holdings = getNW().holdings;
+  if(holdings.length===0){
+    wrap.innerHTML = '<div class="empty-state">No holdings logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  const today = todayLocalISO();
+
+  CATEGORY_GROUPS.forEach(group=>{
+    const groupHoldings = holdings.filter(h=>group.classes.includes(h.assetClass));
+    if(groupHoldings.length===0) return; // hide empty categories entirely
+
+    const subtotal = groupHoldings.reduce((s,h)=>s+holdingCurrentValue(h),0);
+    const expanded = !!categoryExpandState[group.name];
+
+    const section = document.createElement('div');
+    section.className = 'cat-group';
+    const header = document.createElement('div');
+    header.className = 'cat-group-header';
+    header.innerHTML = `
+      <span class="cat-arrow">${expanded?'▾':'▸'}</span>
+      <span class="cat-group-name">${escapeHtml(group.name)}</span>
+      <span class="cat-group-meta">${groupHoldings.length} holding${groupHoldings.length===1?'':'s'} · ${fmtAmount(subtotal)}</span>
+    `;
+    header.addEventListener('click', ()=>toggleCategoryGroup(group.name));
+    section.appendChild(header);
+
+    if(expanded){
+      const body = document.createElement('div');
+      body.className = 'cat-group-body';
+      groupHoldings
+        .sort((a,b)=>a.assetClass.localeCompare(b.assetClass))
+        .forEach(h=>body.appendChild(buildHoldingCard(h, today)));
+      section.appendChild(body);
+    }
+    wrap.appendChild(section);
+  });
+}
+
+
+function renderNWTotals(){
+  const holdings = getNW().holdings;
+  const totalInvested = holdings.reduce((s,h)=>s+holdingInvested(h),0);
+  const totalCurrent = holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
+  const totalRealized = holdings.reduce((s,h)=>s+holdingRealizedPL(h),0);
+  const gain = totalCurrent - totalInvested; // unrealized only
+  const totalProfit = gain + totalRealized;
+
+  document.getElementById('nwTotalInvested').textContent = fmtAmount(totalInvested);
+  document.getElementById('nwTotalCurrent').textContent = fmtAmount(totalCurrent);
+  const gainEl = document.getElementById('nwGainLoss');
+  const gainPct = totalInvested>0 ? (gain/totalInvested)*100 : 0;
+  gainEl.textContent = (gain>=0?'+':'')+fmtAmount(gain)+' ('+gainPct.toFixed(1)+'%)';
+  gainEl.style.color = gain<0 ? 'var(--brick)' : 'var(--green-deep)';
+
+  const thisMonth = thisMonthLocal();
+  const thisYear = todayLocalISO().slice(0,4);
+  const monthInvested = holdings.reduce((s,h)=> s + h.lots.filter(l=>monthKey(l.date)===thisMonth).reduce((s2,l)=>s2+l.quantity*l.price,0), 0);
+  const yearInvested = holdings.reduce((s,h)=> s + h.lots.filter(l=>l.date.slice(0,4)===thisYear).reduce((s2,l)=>s2+l.quantity*l.price,0), 0);
+  document.getElementById('nwInvestedThisMonth').textContent = fmtAmount(monthInvested);
+  document.getElementById('nwInvestedThisYear').textContent = fmtAmount(yearInvested);
+
+  const realizedEl = document.getElementById('nwRealizedTotal');
+  realizedEl.textContent = (totalRealized>=0?'+':'')+fmtAmount(totalRealized);
+  realizedEl.style.color = totalRealized<0 ? 'var(--brick)' : 'var(--green-deep)';
+
+  const profitEl = document.getElementById('nwTotalProfit');
+  profitEl.textContent = (totalProfit>=0?'+':'')+fmtAmount(totalProfit);
+  profitEl.style.color = totalProfit<0 ? 'var(--brick)' : 'var(--green-deep)';
+
+  return totalCurrent;
+}
+
+function renderInvestYearlyTable(){
+  const wrap = document.getElementById('investYearlyTable');
+  const holdings = getNW().holdings;
+  const allLots = holdings.flatMap(h=>h.lots.map(l=>({year: l.date.slice(0,4), amount: l.quantity*l.price})));
+  const allSells = holdings.flatMap(h=>(h.sells||[]).map(s=>({year: s.date.slice(0,4), pl: s.realizedPL})));
+  const years = [...new Set([...allLots.map(l=>l.year), ...allSells.map(s=>s.year)])].sort().reverse();
+  if(years.length===0){
+    wrap.innerHTML = '<div class="empty-state">No investment activity logged yet.</div>';
+    return;
+  }
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Year</th><th style="text-align:right;">Invested</th><th style="text-align:right;">Realized P&amp;L</th></tr></thead>
+      <tbody>
+  `;
+  years.forEach(year=>{
+    const invested = allLots.filter(l=>l.year===year).reduce((s,l)=>s+l.amount,0);
+    const realized = allSells.filter(s=>s.year===year).reduce((s,x)=>s+x.pl,0);
+    html += `
+      <tr>
+        <td>${year}</td>
+        <td class="num">${fmtAmount(invested)}</td>
+        <td class="num ${realized<0?'loss':'gain'}">${realized>=0?'+':''}${fmtAmount(realized)}</td>
+      </tr>
+    `;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// Captures/refreshes this month's net worth snapshot every time the tracker
+// loads. Past months are never touched again once the calendar moves on, so
+// history quietly accumulates from here forward — there's no way to know
+// what things were worth on past dates that were never recorded.
+function updateWealthSnapshot(){
+  const nw = getNW();
+  const investmentValue = nw.holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
+  const liabilities = nw.liabilities.homeLoan + nw.liabilities.carLoan + nw.liabilities.ccDebt + nw.liabilities.personalLoan + nw.liabilities.otherLiability;
+  const netWorth = investmentValue - liabilities;
+  const investedValue = nw.holdings.reduce((s,h)=>s+holdingInvested(h),0);
+  const thisMonth = todayLocalISO().slice(0,7);
+
+  if(!nw.wealthSnapshots) nw.wealthSnapshots = [];
+  const existing = nw.wealthSnapshots.find(s=>s.month===thisMonth);
+  let changed = false;
+  if(existing){
+    if(existing.netWorth!==netWorth || existing.investedValue!==investedValue || existing.currentValue!==investmentValue){
+      existing.netWorth = netWorth;
+      existing.investedValue = investedValue;
+      existing.currentValue = investmentValue;
+      changed = true;
+    }
+  } else {
+    nw.wealthSnapshots.push({ month: thisMonth, netWorth, investedValue, currentValue: investmentValue });
+    changed = true;
+  }
+  // Persist locally right away so this survives a reload even if you close
+  // the tab without doing anything else — but skip a full saveData() (and
+  // the Drive push it triggers) on every single render; the next real
+  // change you make will carry this along to Drive naturally.
+  if(changed) persistLocal();
+}
+
+function renderWealthTrendChart(){
+  const snapshots = (getNW().wealthSnapshots||[]).slice().sort((a,b)=>a.month.localeCompare(b.month));
+  if(snapshots.length===0) return;
+
+  const labels = snapshots.map(s=>{
+    const [y,m] = s.month.split('-');
+    return new Date(y, m-1, 1).toLocaleString('en-IN', {month:'short', year:'numeric'});
+  });
+  const totals = snapshots.map(s=>s.netWorth);
+  const pctChange = snapshots.map((s,i)=>{
+    if(i===0) return null;
+    const prev = snapshots[i-1].netWorth;
+    return prev!==0 ? ((s.netWorth-prev)/Math.abs(prev))*100 : null;
+  });
+
+  const ctx = document.getElementById('wealthTrendChart').getContext('2d');
+  if(charts['wealthTrendChart']) charts['wealthTrendChart'].destroy();
+  charts['wealthTrendChart'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Net worth', data: totals, yAxisID: 'y',
+          borderColor: '#4a7fd6', backgroundColor: '#4a7fd6',
+          pointStyle: 'rect', pointRadius: 5, borderWidth: 2, tension: 0.15
+        },
+        {
+          label: 'Change (%)', data: pctChange, yAxisID: 'y1',
+          borderColor: 'var(--green-deep, #1F6F50)', backgroundColor: '#4d6b3f',
+          pointStyle: 'triangle', pointRadius: 6, borderWidth: 2, tension: 0.15
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position:'top', labels:{ usePointStyle:true, font:{family:'ui-monospace, Menlo, Consolas, monospace', size:11} } },
+        tooltip: { callbacks: { label: (c)=> c.dataset.label + ': ' + (c.dataset.yAxisID==='y1' ? (c.parsed.y===null?'—':c.parsed.y.toFixed(2)+'%') : fmtAmount(c.parsed.y)) } }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{family:'ui-monospace, Menlo, Consolas, monospace', size:10}} },
+        y: {
+          position: 'left', grid:{color:'rgba(27,42,34,0.08)'},
+          ticks: { font:{family:'ui-monospace, Menlo, Consolas, monospace', size:10}, callback:(v)=>fmtAmount(v) },
+          title: { display:true, text:'Net worth', font:{size:11} }
+        },
+        y1: {
+          position: 'right', grid:{display:false},
+          ticks: { font:{family:'ui-monospace, Menlo, Consolas, monospace', size:10}, callback:(v)=>v.toFixed(1)+'%' },
+          title: { display:true, text:'Change (%)', font:{size:11} }
+        }
+      }
+    }
+  });
+}
+
+
+
+const ASSET_CLASS_PALETTE = ['#1F6F50','#C98A2C','#A2452F','#4B5A50','#7a9e8f','#d9b06b','#c47a68','#8fa89d','#3d6b8a','#6b5b95','#88a09e'];
+
+function computeCategoryBreakdown(){
+  const holdings = getNW().holdings;
+  const byClass = {};
+  holdings.forEach(h=>{
+    if(!byClass[h.assetClass]) byClass[h.assetClass] = { invested:0, current:0 };
+    byClass[h.assetClass].invested += holdingInvested(h);
+    byClass[h.assetClass].current += holdingCurrentValue(h);
+  });
+  return Object.keys(byClass)
+    .map(assetClass=>({ assetClass, label: ASSET_CLASS_LABELS[assetClass]||assetClass, ...byClass[assetClass] }))
+    .sort((a,b)=>b.current-a.current);
+}
+
+function renderHoldingsChart(){
+  const rows = computeCategoryBreakdown();
+  if(rows.length===0 || rows.every(r=>r.current<=0)){
+    drawChart('holdingsChart', ['No holdings'], [{data:[1], backgroundColor:['#c7cdb9']}], {plugins:{legend:{display:false}}}, 'doughnut');
+    return;
+  }
+  const labels = rows.map(r=>r.label);
+  const data = rows.map(r=>r.current);
+  drawChart('holdingsChart', labels, [{ data, backgroundColor: labels.map((_,i)=>ASSET_CLASS_PALETTE[i%ASSET_CLASS_PALETTE.length]) }], {}, 'doughnut');
+}
+
+function renderCategoryBreakdownTable(){
+  const wrap = document.getElementById('categoryBreakdownTable');
+  const rows = computeCategoryBreakdown();
+  if(rows.length===0){
+    wrap.innerHTML = '';
+    return;
+  }
+  const totalInvested = rows.reduce((s,r)=>s+r.invested,0);
+  const totalCurrent = rows.reduce((s,r)=>s+r.current,0);
+  const totalGain = totalCurrent - totalInvested;
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Category</th><th style="text-align:right;">Invested</th><th style="text-align:right;">Current value</th><th style="text-align:right;">Gain/Loss</th></tr></thead>
+      <tbody>
+  `;
+  rows.forEach((r,i)=>{
+    const gain = r.current - r.invested;
+    const gainPct = r.invested>0 ? (gain/r.invested)*100 : 0;
+    html += `
+      <tr>
+        <td><span class="swatch" style="background:${ASSET_CLASS_PALETTE[i%ASSET_CLASS_PALETTE.length]};"></span>${escapeHtml(r.label)}</td>
+        <td class="num">${fmtAmount(r.invested)}</td>
+        <td class="num">${fmtAmount(r.current)}</td>
+        <td class="num ${gain<0?'loss':'gain'}">${gain>=0?'+':''}${fmtAmount(gain)} (${gainPct.toFixed(1)}%)</td>
+      </tr>
+    `;
+  });
+  const totalGainPct = totalInvested>0 ? (totalGain/totalInvested)*100 : 0;
+  html += `
+      <tr class="total-row">
+        <td>Total</td>
+        <td class="num">${fmtAmount(totalInvested)}</td>
+        <td class="num">${fmtAmount(totalCurrent)}</td>
+        <td class="num ${totalGain<0?'loss':'gain'}">${totalGain>=0?'+':''}${fmtAmount(totalGain)} (${totalGainPct.toFixed(1)}%)</td>
+      </tr>
+    </tbody></table>
+  `;
+  wrap.innerHTML = html;
+}
+
+function bindFlatNWField(id, group, key){
+  const el = document.getElementById(id);
+  el.addEventListener('input', ()=>{
+    getNW()[group][key] = +el.value || 0;
+    saveData();
+    renderNWSummary();
+  });
+}
+[['nwHomeLoan','homeLoan'],['nwCarLoan','carLoan'],['nwCcDebt','ccDebt'],['nwPersonalLoan','personalLoan'],['nwOtherLiability','otherLiability']].forEach(([id,key])=>{
+  bindFlatNWField(id, 'liabilities', key);
+});
+
+function renderNWSummary(investmentValue){
+  const nw = getNW();
+  if(investmentValue===undefined) investmentValue = nw.holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
+  const liabilities = nw.liabilities.homeLoan + nw.liabilities.carLoan + nw.liabilities.ccDebt + nw.liabilities.personalLoan + nw.liabilities.otherLiability;
+  const grandTotal = investmentValue - liabilities;
+
+  document.getElementById('nwInvestValue').textContent = fmtAmount(investmentValue);
+  document.getElementById('nwLiabTotal').textContent = fmtAmount(liabilities);
+  const grandEl = document.getElementById('nwGrandTotal');
+  grandEl.textContent = fmtAmount(grandTotal);
+  grandEl.classList.toggle('brick', grandTotal<0);
+
+  // reflect saved liability values into the input fields (e.g. after switching currency or restoring from Drive)
+  document.getElementById('nwHomeLoan').value = nw.liabilities.homeLoan;
+  document.getElementById('nwCarLoan').value = nw.liabilities.carLoan;
+  document.getElementById('nwCcDebt').value = nw.liabilities.ccDebt;
+  document.getElementById('nwPersonalLoan').value = nw.liabilities.personalLoan;
+  document.getElementById('nwOtherLiability').value = nw.liabilities.otherLiability;
+}
+
+function renderNetWorth(){
+  renderHoldingsList();
+  const investmentValue = renderNWTotals();
+  renderInvestYearlyTable();
+  updateWealthSnapshot();
+  renderWealthTrendChart();
+  renderHoldingsChart();
+  renderCategoryBreakdownTable();
+  renderNWSummary(investmentValue);
+}
+
+// ---------- Lending (money lent to people — never counted in net worth) ----------
+// One record per PERSON, not per loan — so lending to the same person again
+// adds to their existing record instead of creating a separate card.
+function getLending(){ return getNW().lending; }
+
+// Backward compatibility: records created before this multi-loan redesign
+// had a single {amount, dateLent, note} instead of a lends[] array.
+function migrateLending(l){
+  if(l.lends) return l;
+  return {
+    id: l.id,
+    name: l.name,
+    lends: [{ id: nwUid(), date: l.dateLent, amount: l.amount, note: l.note||null }],
+    repayments: (l.repayments||[]).map(r=>({ id:r.id, date:r.date, amount:r.amount, note:r.note||null }))
+  };
+}
+
+function lendingTotalLent(l){ return l.lends.reduce((s,x)=>s+x.amount,0); }
+function lendingTotalRepaid(l){ return (l.repayments||[]).reduce((s,r)=>s+r.amount,0); }
+function lendingOutstanding(l){ return Math.max(0, lendingTotalLent(l) - lendingTotalRepaid(l)); }
+function lendingStatus(l){
+  const outstanding = lendingOutstanding(l);
+  if(outstanding<=0) return 'repaid';
+  if(lendingTotalRepaid(l)>0) return 'partial';
+  return 'outstanding';
+}
+function lendingFirstDate(l){ return l.lends.reduce((min,x)=> x.date<min?x.date:min, l.lends[0].date); }
+const LENDING_STATUS_LABEL = { repaid:'Fully repaid', partial:'Partially repaid', outstanding:'Outstanding' };
+
+document.getElementById('addLending').addEventListener('click', ()=>{
+  const name = document.getElementById('lendName').value.trim();
+  const amount = +document.getElementById('lendAmount').value;
+  const date = document.getElementById('lendDate').value || todayLocalISO();
+  const note = document.getElementById('lendNote').value.trim();
+
+  if(!name){ alert('Enter who this was lent to.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+
+  // If a record already exists for this person (case-insensitive match),
+  // add this as another loan to them instead of creating a duplicate card.
+  const existing = getLending().find(l=>l.name.trim().toLowerCase()===name.toLowerCase());
+  if(existing){
+    existing.lends.push({ id: nwUid(), date, amount, note: note||null });
+  } else {
+    getLending().push({
+      id: nwUid(),
+      name,
+      lends: [{ id: nwUid(), date, amount, note: note||null }],
+      repayments: []
+    });
+  }
+  saveData();
+  document.getElementById('lendName').value = '';
+  document.getElementById('lendAmount').value = '';
+  document.getElementById('lendNote').value = '';
+  document.getElementById('lendDate').value = todayLocalISO();
+  renderLending();
+});
+
+function addLoanToPerson(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  const raw = prompt(`Another loan to "${l.name}" — amount:`, '');
+  if(!raw) return;
+  const amount = +raw;
+  if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  const note = prompt('Note (optional):', '') || '';
+  l.lends.push({ id: nwUid(), date, amount, note: note.trim()||null });
+  saveData();
+  renderLending();
+}
+
+function addRepayment(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  const outstanding = lendingOutstanding(l);
+  const raw = prompt(`Repayment from "${l.name}" (outstanding: ${fmtAmount(outstanding)}) — enter the full amount for a one-time payoff, or a partial amount for an EMI-style installment:`, outstanding);
+  if(!raw) return;
+  const amount = +raw;
+  if(!amount || amount<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date received (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  const note = prompt('Note (optional):', '') || '';
+  l.repayments = l.repayments || [];
+  l.repayments.push({ id: nwUid(), date, amount, note: note.trim()||null });
+  saveData();
+  renderLending();
+}
+
+function editLoan(personId, loanId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  const loan = l.lends.find(x=>x.id===loanId);
+  if(!loan) return;
+  const amtRaw = prompt('Amount lent:', loan.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', loan.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', loan.note||'');
+  if(noteRaw===null) return;
+  loan.amount = amt;
+  loan.date = dateRaw || loan.date;
+  loan.note = noteRaw.trim() || null;
+  saveData();
+  renderLending();
+}
+function deleteLoan(personId, loanId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  if(l.lends.length===1){
+    if(!confirm(`This is the only loan on record for "${l.name}" — deleting it removes their whole record. Continue?`)) return;
+    getNW().lending = getLending().filter(x=>x.id!==personId);
+    saveData();
+    renderLending();
+    return;
+  }
+  if(!confirm('Delete this loan entry?')) return;
+  l.lends = l.lends.filter(x=>x.id!==loanId);
+  saveData();
+  renderLending();
+}
+
+function editRepayment(personId, repId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  const rep = (l.repayments||[]).find(r=>r.id===repId);
+  if(!rep) return;
+  const amtRaw = prompt('Repayment amount:', rep.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', rep.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', rep.note||'');
+  if(noteRaw===null) return;
+  rep.amount = amt;
+  rep.date = dateRaw || rep.date;
+  rep.note = noteRaw.trim() || null;
+  saveData();
+  renderLending();
+}
+function deleteRepayment(personId, repId){
+  const l = getLending().find(x=>x.id===personId);
+  if(!l) return;
+  if(!confirm('Delete this repayment entry?')) return;
+  l.repayments = (l.repayments||[]).filter(r=>r.id!==repId);
+  saveData();
+  renderLending();
+}
+
+function renameLendingPerson(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  const newName = prompt('Name:', l.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  l.name = newName.trim();
+  saveData();
+  renderLending();
+}
+function deleteLendingPerson(id){
+  const l = getLending().find(x=>x.id===id);
+  if(!l) return;
+  if(!confirm(`Delete the entire record for "${l.name}", including all loans and repayments? This can't be undone.`)) return;
+  markDeleted(id);
+  getNW().lending = getLending().filter(x=>x.id!==id);
+  saveData();
+  renderLending();
+}
+
+function buildLendingCard(l, today){
+  const totalLent = lendingTotalLent(l);
+  const repaid = lendingTotalRepaid(l);
+  const outstanding = lendingOutstanding(l);
+  const status = lendingStatus(l);
+  const daysSinceFirst = daysBetween(lendingFirstDate(l), today);
+
+  // Merge every loan and repayment into one chronological history, most recent first.
+  const history = [
+    ...l.lends.map(x=>({ ...x, kind:'lend' })),
+    ...(l.repayments||[]).map(x=>({ ...x, kind:'repay' }))
+  ].sort((a,b)=> b.date.localeCompare(a.date));
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${status}">${LENDING_STATUS_LABEL[status]}</span>
+      <span class="h-name">${escapeHtml(l.name)}</span>
+      <span class="h-meta">First loan ${daysSinceFirst} day${daysSinceFirst===1?'':'s'} ago · ${l.lends.length} loan${l.lends.length===1?'':'s'}</span>
     </div>
-    <div class="chart-col">
-      <h3>Income vs. expenses, last 6 months</h3>
-      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Total lent</span>${fmtAmount(totalLent)}</div>
+      <div class="h-figure"><span class="lbl">Total repaid</span>${fmtAmount(repaid)}</div>
+      <div class="h-figure h-gain${outstanding>0?' loss':''}"><span class="lbl">Outstanding</span>${fmtAmount(outstanding)}</div>
     </div>
-  </div>
-
-  <!-- Yearly Statistics -->
-  <div class="section-head"><h2>Yearly statistics</h2></div>
-  <p class="section-desc">Every year you've logged data for, income vs. expenses side by side.</p>
-  <div id="yearlyStatsTable" style="margin-bottom:44px;"></div>
-
-  <!-- Monthly Category Breakdown -->
-  <div class="section-head"><h2>Monthly spending by category</h2></div>
-  <p class="section-desc">How much went to each category, month by month — scroll sideways on smaller screens.</p>
-  <div class="filter-bar" style="margin-bottom:10px;">
-    <select id="monthlyCategoryYear"></select>
-  </div>
-  <div style="overflow-x:auto;margin-bottom:44px;">
-    <div id="monthlyCategoryTable" style="min-width:600px;"></div>
-  </div>
-
-  <!-- Spending by Tag -->
-  <div class="section-head"><h2>Spending by tag</h2></div>
-  <p class="section-desc">If you tag transactions with who or what they're for (e.g. a person, a household, a trip), see totals per tag here. Untagged transactions aren't included.</p>
-  <div id="tagBreakdownTable" style="margin-bottom:44px;"></div>
-
-  <!-- Net Worth -->
-  <div class="section-head"><h2>Net worth</h2></div>
-  <p class="section-desc">Tracks whatever's selected in the currency toggle up top — switch to USD to log your US stocks separately from everything in INR. For share/unit-based assets, enter quantity and price; for lump-sum ones like FD or savings, just enter the amount as a single unit.</p>
-
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Add a holding</div>
-      <div class="holding-form">
-        <div>
-          <label>Asset type</label>
-          <select id="holdingClass">
-            <optgroup label="Bank & Deposits">
-              <option value="savings">Savings</option>
-              <option value="fd">FD</option>
-              <option value="rd">RD</option>
-            </optgroup>
-            <optgroup label="Retirement">
-              <option value="epf">EPF</option>
-              <option value="ppf">PPF</option>
-            </optgroup>
-            <optgroup label="Equity">
-              <option value="equity">Equity</option>
-            </optgroup>
-            <optgroup label="Mutual Fund">
-              <option value="mf">Mutual Fund</option>
-            </optgroup>
-            <optgroup label="Liquid Fund">
-              <option value="liquidmf">Liquid / Short-term MF</option>
-            </optgroup>
-            <optgroup label="Gold">
-              <option value="gold">Gold / Silver</option>
-            </optgroup>
-            <optgroup label="International">
-              <option value="usstock">US Stocks</option>
-            </optgroup>
-            <optgroup label="Other">
-              <option value="crypto">Crypto</option>
-              <option value="realestate">Real Estate</option>
-              <option value="vehicle">Vehicle</option>
-              <option value="other">Other</option>
-            </optgroup>
-          </select>
-        </div>
-        <div>
-          <label>Name</label>
-          <input type="text" id="holdingName" placeholder="e.g. HDFC FD, Reliance, Bitcoin" maxlength="80">
-        </div>
-        <div>
-          <label id="holdingUnitsLabel">Units</label>
-          <input type="number" id="holdingUnits" min="0" step="any" value="1">
-        </div>
-        <div>
-          <label id="holdingPriceLabel">Buy price / unit</label>
-          <input type="number" id="holdingPrice" min="0" step="any" placeholder="0">
-        </div>
-        <div>
-          <label>Buy date</label>
-          <input type="date" id="holdingDate">
-        </div>
-        <div>
-          <label id="holdingCurrentPriceLabel">Current price / unit</label>
-          <input type="number" id="holdingCurrentPrice" min="0" step="any" placeholder="same as buy price">
-        </div>
-        <div>
-          <label>Ticker / Coin ID <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
-          <input type="text" id="holdingTicker" placeholder="AAPL, RELIANCE.NS, BTC-USD" maxlength="40">
-        </div>
-        <div>
-          <label>Note <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
-          <input type="text" id="holdingNote" placeholder="e.g. 2BHK in Pune, bought for the family" maxlength="140">
-        </div>
-        <div>
-          <button class="btn-primary" id="addHolding" style="padding:9px 16px;">+ Add</button>
-        </div>
-      </div>
+    <div class="h-actions">
+      <button class="buy" data-action="newloan">+ New loan</button>
+      <button data-action="repay" ${outstanding<=0?'disabled':''}>+ Add repayment</button>
+      <button data-action="rename">✎ Rename</button>
+      <button data-action="del">× Delete</button>
     </div>
-  </div>
+    <div class="h-log" id="lendlog-${l.id}"></div>
+  `;
+  card.querySelector('[data-action=newloan]').addEventListener('click', ()=>addLoanToPerson(l.id));
+  const repayBtn = card.querySelector('[data-action=repay]');
+  if(outstanding>0) repayBtn.addEventListener('click', ()=>addRepayment(l.id));
+  card.querySelector('[data-action=rename]').addEventListener('click', ()=>renameLendingPerson(l.id));
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteLendingPerson(l.id));
 
-  <div class="drive-box" style="margin-bottom:20px;">
-    <p class="section-desc" style="margin-top:0;">🔄 Auto price refresh</p>
-    <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin:0 0 14px;">
-      A scheduled GitHub Action in this repo fetches current prices — for US stocks, Indian stocks (NSE/BSE), and crypto, all from one source — and publishes them here automatically, by default once an hour. Nothing runs in your browser to do this; it happens on GitHub's servers, so there's no API key to manage and no CORS issues.
-    </p>
-    <details class="drive-setup">
-      <summary>⚙️ One-time setup / adding a new ticker</summary>
-      <ol>
-        <li>In your repo, open <code>tickers.json</code> and add the ticker you want tracked — <b>US stocks:</b> plain symbol like <code>AAPL</code>. <b>Indian NSE:</b> symbol + <code>.NS</code>, e.g. <code>RELIANCE.NS</code>. <b>Indian BSE:</b> scrip code + <code>.BO</code>, e.g. <code>500325.BO</code>. <b>Crypto:</b> symbol + <code>-USD</code>, e.g. <code>BTC-USD</code>.</li>
-        <li>Commit that change. The next scheduled run (within the hour) picks it up automatically — or trigger it immediately from your repo's <b>Actions</b> tab → "Update stock/crypto prices" → <b>Run workflow</b>.</li>
-        <li>On the matching holding in the tracker, put the <em>exact same</em> text in its "Ticker / Coin ID" field.</li>
-        <li>Click <b>Refresh all prices</b> below to pull the latest published values into this browser.</li>
-      </ol>
-      <p>Savings, FD, RD, EPF, PPF, Mutual Fund, and Gold have no reliable free auto-price source, so keep using <b>✎ Update price</b> for those.</p>
-    </details>
-    <div class="setup-row">
-      <button class="btn-secondary" id="refreshAllPrices">🔄 Refresh all prices</button>
+  const logEl = card.querySelector('.h-log');
+  if(history.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No loans yet.</span>';
+  }
+  history.forEach(entry=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    const label = entry.kind==='lend'
+      ? `Lent ${fmtAmount(entry.amount)} on ${entry.date}${entry.note?' — '+escapeHtml(entry.note):''}`
+      : `Repaid ${fmtAmount(entry.amount)} on ${entry.date}${entry.note?' — '+escapeHtml(entry.note):''}`;
+    row.innerHTML = `<span style="${entry.kind==='repay'?'color:var(--green-deep);':''}">${label}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=> entry.kind==='lend' ? editLoan(l.id, entry.id) : editRepayment(l.id, entry.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=> entry.kind==='lend' ? deleteLoan(l.id, entry.id) : deleteRepayment(l.id, entry.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+
+  return card;
+}
+
+function renderLendingList(){
+  const wrap = document.getElementById('lendingList');
+  const lending = getLending();
+  if(lending.length===0){
+    wrap.innerHTML = '<div class="empty-state">No loans given logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  const today = todayLocalISO();
+  lending.slice()
+    .sort((a,b)=> lendingStatus(a)==='repaid' && lendingStatus(b)!=='repaid' ? 1 : (lendingStatus(b)==='repaid' && lendingStatus(a)!=='repaid' ? -1 : lendingFirstDate(b).localeCompare(lendingFirstDate(a))))
+    .forEach(l=>wrap.appendChild(buildLendingCard(l, today)));
+}
+
+function renderLendingSummary(){
+  const lending = getLending();
+  const totalLent = lending.reduce((s,l)=>s+lendingTotalLent(l),0);
+  const totalRepaid = lending.reduce((s,l)=>s+lendingTotalRepaid(l),0);
+  const totalOutstanding = lending.reduce((s,l)=>s+lendingOutstanding(l),0);
+  document.getElementById('lendTotalLent').textContent = fmtAmount(totalLent);
+  document.getElementById('lendTotalRepaid').textContent = fmtAmount(totalRepaid);
+  document.getElementById('lendTotalOutstanding').textContent = fmtAmount(totalOutstanding);
+}
+
+function renderLending(){
+  getNW().lending = getLending().map(migrateLending);
+  renderLendingList();
+  renderLendingSummary();
+}
+
+// ---------- Remittances (USA -> India, spans both currencies at once) ----------
+function remitRate(r){ return r.usdAmount>0 ? r.inrAmount/r.usdAmount : 0; }
+
+function populateRemitFilters(){
+  const recipients = [...new Set(remittances.map(r=>r.recipient))].sort();
+  const recSel = document.getElementById('remitRecipientFilter');
+  const prevRec = recSel.value;
+  recSel.innerHTML = '<option value="">All accounts/recipients</option>' + recipients.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+  if(prevRec) recSel.value = prevRec;
+
+  const years = [...new Set(remittances.map(r=>r.date.slice(0,4)))].sort().reverse();
+  const yearSel = document.getElementById('remitYearFilter');
+  const prevYear = yearSel.value;
+  yearSel.innerHTML = '<option value="__all__">All years</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  if(prevYear && [...yearSel.options].some(o=>o.value===prevYear)) yearSel.value = prevYear;
+
+  const datalist = document.getElementById('remitRecipientOptions');
+  datalist.innerHTML = recipients.map(r=>`<option value="${escapeHtml(r)}">`).join('');
+}
+document.getElementById('remitRecipientFilter').addEventListener('change', renderRemitViews);
+document.getElementById('remitYearFilter').addEventListener('change', renderRemitViews);
+
+function getFilteredRemittances(){
+  const recipient = document.getElementById('remitRecipientFilter').value;
+  const year = document.getElementById('remitYearFilter').value;
+  return remittances.filter(r=>{
+    if(recipient && r.recipient!==recipient) return false;
+    if(year!=='__all__' && r.date.slice(0,4)!==year) return false;
+    return true;
+  });
+}
+
+document.getElementById('addRemit').addEventListener('click', ()=>{
+  const date = document.getElementById('remitDate').value || todayLocalISO();
+  const recipient = document.getElementById('remitRecipient').value.trim();
+  const usdAmount = +document.getElementById('remitUsd').value;
+  const inrAmount = +document.getElementById('remitInr').value;
+  const note = document.getElementById('remitNote').value.trim();
+
+  if(!recipient){ alert('Enter which account/recipient this went to.'); return; }
+  if(!usdAmount || usdAmount<=0){ alert('Enter the USD amount sent.'); return; }
+  if(!inrAmount || inrAmount<=0){ alert('Enter the INR amount received.'); return; }
+
+  remittances.push({ id: nwUid(), date, recipient, usdAmount, inrAmount, note: note||null });
+  saveData();
+  document.getElementById('remitRecipient').value = '';
+  document.getElementById('remitUsd').value = '';
+  document.getElementById('remitInr').value = '';
+  document.getElementById('remitNote').value = '';
+  document.getElementById('remitDate').value = todayLocalISO();
+  renderRemit();
+});
+
+function editRemit(id){
+  const r = remittances.find(x=>x.id===id);
+  if(!r) return;
+  const recipientRaw = prompt('Account/Recipient:', r.recipient);
+  if(recipientRaw===null) return;
+  if(!recipientRaw.trim()){ alert('Can\'t be empty.'); return; }
+  const usdRaw = prompt('USD sent:', r.usdAmount);
+  if(usdRaw===null) return;
+  const usd = +usdRaw;
+  if(!usd || usd<=0){ alert('Enter a valid USD amount.'); return; }
+  const inrRaw = prompt('INR received:', r.inrAmount);
+  if(inrRaw===null) return;
+  const inr = +inrRaw;
+  if(!inr || inr<=0){ alert('Enter a valid INR amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', r.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', r.note||'');
+  if(noteRaw===null) return;
+
+  r.recipient = recipientRaw.trim();
+  r.usdAmount = usd;
+  r.inrAmount = inr;
+  r.date = dateRaw || r.date;
+  r.note = noteRaw.trim() || null;
+  saveData();
+  renderRemit();
+}
+function deleteRemit(id){
+  if(!confirm('Delete this transfer? This can\'t be undone.')) return;
+  markDeleted(id);
+  remittances = remittances.filter(x=>x.id!==id);
+  saveData();
+  renderRemit();
+}
+
+let remitListExpanded = false;
+document.getElementById('remitListToggle').addEventListener('click', ()=>{
+  remitListExpanded = !remitListExpanded;
+  renderRemitList();
+});
+
+function renderRemitList(){
+  const wrap = document.getElementById('remitList');
+  const arrow = document.getElementById('remitListArrow');
+  const meta = document.getElementById('remitListMeta');
+  const filtered = getFilteredRemittances().slice().sort((a,b)=>b.date.localeCompare(a.date));
+
+  arrow.textContent = remitListExpanded ? '▾' : '▸';
+  meta.textContent = `${filtered.length} transfer${filtered.length===1?'':'s'}`;
+  wrap.style.display = remitListExpanded ? '' : 'none';
+  if(!remitListExpanded) return;
+
+  if(filtered.length===0){
+    wrap.innerHTML = '<div class="empty-state">No transfers logged yet for this selection.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  filtered.forEach(r=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span><b>${escapeHtml(r.recipient)}</b> — $${r.usdAmount.toLocaleString('en-US')} → ₹${r.inrAmount.toLocaleString('en-IN')} (rate ${remitRate(r).toFixed(2)}) on ${r.date}${r.note?' — '+escapeHtml(r.note):''}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editRemit(r.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteRemit(r.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    wrap.appendChild(row);
+  });
+}
+
+function renderRemitRecipientTable(){
+  const wrap = document.getElementById('remitRecipientTable');
+  const filtered = getFilteredRemittances();
+  if(filtered.length===0){ wrap.innerHTML = ''; return; }
+  const byRecipient = {};
+  filtered.forEach(r=>{
+    if(!byRecipient[r.recipient]) byRecipient[r.recipient] = { usd:0, inr:0, count:0 };
+    byRecipient[r.recipient].usd += r.usdAmount;
+    byRecipient[r.recipient].inr += r.inrAmount;
+    byRecipient[r.recipient].count++;
+  });
+  const recipients = Object.keys(byRecipient).sort((a,b)=>byRecipient[b].inr-byRecipient[a].inr);
+  let html = `<table class="cat-table"><thead><tr><th>Account/Recipient</th><th style="text-align:right;">USD sent</th><th style="text-align:right;">INR received</th><th style="text-align:right;">Avg rate</th><th style="text-align:right;">Transfers</th></tr></thead><tbody>`;
+  recipients.forEach(name=>{
+    const d = byRecipient[name];
+    html += `<tr><td>${escapeHtml(name)}</td><td class="num">$${d.usd.toLocaleString('en-US')}</td><td class="num">₹${d.inr.toLocaleString('en-IN')}</td><td class="num">${(d.inr/d.usd).toFixed(2)}</td><td class="num">${d.count}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderRemitYearTable(){
+  const wrap = document.getElementById('remitYearTable');
+  const filtered = getFilteredRemittances();
+  if(filtered.length===0){ wrap.innerHTML = ''; return; }
+  const byYear = {};
+  filtered.forEach(r=>{
+    const y = r.date.slice(0,4);
+    if(!byYear[y]) byYear[y] = { usd:0, inr:0, count:0 };
+    byYear[y].usd += r.usdAmount;
+    byYear[y].inr += r.inrAmount;
+    byYear[y].count++;
+  });
+  const years = Object.keys(byYear).sort().reverse();
+  let html = `<table class="cat-table"><thead><tr><th>Year</th><th style="text-align:right;">USD sent</th><th style="text-align:right;">INR received</th><th style="text-align:right;">Avg rate</th><th style="text-align:right;">Transfers</th></tr></thead><tbody>`;
+  years.forEach(y=>{
+    const d = byYear[y];
+    html += `<tr><td>${y}</td><td class="num">$${d.usd.toLocaleString('en-US')}</td><td class="num">₹${d.inr.toLocaleString('en-IN')}</td><td class="num">${(d.inr/d.usd).toFixed(2)}</td><td class="num">${d.count}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderRemitAccountYearTable(){
+  const wrap = document.getElementById('remitAccountYearTable');
+  const filtered = getFilteredRemittances();
+  if(filtered.length===0){ wrap.innerHTML = ''; return; }
+  const recipients = [...new Set(filtered.map(r=>r.recipient))].sort();
+  const years = [...new Set(filtered.map(r=>r.date.slice(0,4)))].sort().reverse();
+
+  let html = `<table class="cat-table"><thead><tr><th>Year</th>${recipients.map(r=>`<th style="text-align:right;">${escapeHtml(r)}</th>`).join('')}<th style="text-align:right;">Total</th></tr></thead><tbody>`;
+  years.forEach(y=>{
+    const yearTx = filtered.filter(r=>r.date.slice(0,4)===y);
+    let yearUsdTotal = 0, yearInrTotal = 0;
+    const cells = recipients.map(name=>{
+      const matches = yearTx.filter(r=>r.recipient===name);
+      if(matches.length===0) return '<td class="num">—</td>';
+      const usd = matches.reduce((s,r)=>s+r.usdAmount,0);
+      const inr = matches.reduce((s,r)=>s+r.inrAmount,0);
+      yearUsdTotal += usd; yearInrTotal += inr;
+      return `<td class="num">$${usd.toLocaleString('en-US')}<br>₹${inr.toLocaleString('en-IN')}</td>`;
+    }).join('');
+    html += `<tr><td>${y}</td>${cells}<td class="num" style="font-weight:600;">$${yearUsdTotal.toLocaleString('en-US')}<br>₹${yearInrTotal.toLocaleString('en-IN')}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderRemitSummary(){
+  const filtered = getFilteredRemittances();
+  const totalUsd = filtered.reduce((s,r)=>s+r.usdAmount,0);
+  const totalInr = filtered.reduce((s,r)=>s+r.inrAmount,0);
+  document.getElementById('remitTotalUsd').textContent = '$'+totalUsd.toLocaleString('en-US');
+  document.getElementById('remitTotalInr').textContent = '₹'+totalInr.toLocaleString('en-IN');
+  document.getElementById('remitAvgRate').textContent = totalUsd>0 ? (totalInr/totalUsd).toFixed(2) : '—';
+  document.getElementById('remitCount').textContent = filtered.length;
+}
+
+function renderRemitViews(){
+  renderRemitList();
+  renderRemitRecipientTable();
+  renderRemitYearTable();
+  renderRemitAccountYearTable();
+  renderRemitSummary();
+}
+function renderRemit(){
+  populateRemitFilters();
+  renderRemitViews();
+}
+
+// ---------- SIPs (installments auto-log on their due date, monthly, until stopped) ----------
+function getSips(){ return getNW().sips; }
+
+function sipTotalInvested(sip){ return sip.installments.reduce((s,x)=>s+x.amount,0); }
+
+// Catches up any installments whose due date has passed since we last
+// checked — this is what makes it feel automatic: just opening the tracker
+// logs anything that came due, for every SIP still marked active.
+function populateSipLinkedHoldingSelect(){
+  const sel = document.getElementById('sipLinkedHolding');
+  const prevValue = sel.value;
+  sel.innerHTML = '<option value="">— none —</option>';
+  getNW().holdings.forEach(h=>{
+    const opt = document.createElement('option');
+    opt.value = h.id;
+    opt.textContent = `${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+}
+
+function syncSipInstallments(){
+  const today = todayLocalISO();
+  let changed = false;
+  getSips().forEach(sip=>{
+    // Migration: SIPs created before frequency support default to monthly.
+    if(!sip.frequencyUnit){ sip.frequencyUnit = 'months'; sip.frequencyValue = 1; }
+    if(sip.status!=='active') return;
+    let guard = 0;
+    while(sip.nextDueDate<=today && guard<600){
+      const installmentDate = sip.nextDueDate;
+      const installment = { id: nwUid(), date: installmentDate, amount: sip.amount, postedToHolding: false };
+      sip.installments.push(installment);
+      // If this SIP is linked to a real holding, also log the same amount as
+      // a buy there — that's what makes an automatic note show up at the
+      // bottom of the holding's own buy/sell log, right where you'd look for it.
+      if(sip.linkedHoldingId){
+        const holding = getNW().holdings.find(h=>h.id===sip.linkedHoldingId);
+        if(holding){
+          if(isSimpleValueClass(holding.assetClass)){
+            // MF/Liquid Fund/Gold/etc. must always stay as exactly one lot for
+            // the value math — but investmentLog keeps a full, separate
+            // history of every contribution (so each SIP installment shows
+            // up as its own dated entry, not one note getting overwritten).
+            // Current value is intentionally left alone; you update that yourself.
+            holding.investmentLog = holding.investmentLog || [];
+            holding.investmentLog.push({ id: nwUid(), date: installmentDate, amount: sip.amount, note: `SIP amount added to this fund on ${installmentDate}` });
+            recomputeSimpleLot(holding);
+          } else {
+            // Share-based holdings (Equity/US Stocks/Crypto) keep real per-buy lots.
+            holding.lots.push({ id: nwUid(), date: installmentDate, quantity: 1, price: sip.amount, note: `SIP: ${sip.name}` });
+          }
+          installment.postedToHolding = true;
+        }
+      }
+      sip.nextDueDate = advanceDate(sip.nextDueDate, sip.frequencyUnit, sip.frequencyValue);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+document.getElementById('addSip').addEventListener('click', ()=>{
+  const name = document.getElementById('sipName').value.trim();
+  const amount = +document.getElementById('sipAmount').value;
+  const startDate = document.getElementById('sipStartDate').value || todayLocalISO();
+  const linkedHoldingId = document.getElementById('sipLinkedHolding').value || null;
+  const [frequencyUnit, freqValueRaw] = document.getElementById('sipFrequency').value.split(':');
+  const frequencyValue = +freqValueRaw;
+
+  if(!name){ alert('Give this SIP a name.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+
+  getSips().push({
+    id: nwUid(),
+    name,
+    amount,
+    startDate,
+    linkedHoldingId,
+    frequencyUnit,
+    frequencyValue,
+    status: 'active',
+    stoppedDate: null,
+    nextDueDate: startDate,
+    installments: []
+  });
+  saveData();
+  document.getElementById('sipName').value = '';
+  document.getElementById('sipAmount').value = '';
+  document.getElementById('sipLinkedHolding').value = '';
+  document.getElementById('sipStartDate').value = todayLocalISO();
+  renderSips();
+});
+
+function stopSip(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  if(!confirm(`Stop "${sip.name}"? No more installments will be logged automatically after today.`)) return;
+  sip.status = 'stopped';
+  sip.stoppedDate = todayLocalISO();
+  saveData();
+  renderSips();
+}
+function resumeSip(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  sip.status = 'active';
+  sip.stoppedDate = null;
+  // Don't burst-generate installments for the whole paused period —
+  // resume fresh from today if the due date fell behind while stopped.
+  if(sip.nextDueDate < todayLocalISO()) sip.nextDueDate = todayLocalISO();
+  saveData();
+  renderSips();
+}
+function editSipInfo(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  const newName = prompt('SIP name:', sip.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newAmt = prompt(`Amount per ${sipFrequencyLabel(sip).toLowerCase()} installment (applies to future installments only):`, sip.amount);
+  if(newAmt===null) return;
+  const amt = +newAmt;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+
+  // Let them (re)link to a real holding — this is what actually makes future
+  // installments post as buys into that holding's invested amount. Typing a
+  // holding's number here fixes SIPs created before this linking existed, or
+  // ones where "— none —" was picked originally.
+  const holdings = getNW().holdings;
+  const currentIndex = sip.linkedHoldingId ? holdings.findIndex(h=>h.id===sip.linkedHoldingId) : -1;
+  const list = holdings.map((h,i)=>`${i+1}. ${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`).join('\n');
+  const linkRaw = holdings.length===0
+    ? null
+    : prompt(`Link to a holding, so future installments auto-invest into it.\nEnter a number, or 0 for none:\n\n0. — none —\n${list}`, currentIndex>=0 ? String(currentIndex+2) : '0');
+
+  sip.name = newName.trim();
+  sip.amount = amt;
+  if(linkRaw!==null){
+    const linkNum = parseInt(linkRaw, 10);
+    const newLinkedHoldingId = (!isNaN(linkNum) && linkNum>=1 && linkNum<=holdings.length) ? holdings[linkNum-1].id : null;
+    const linkChanged = newLinkedHoldingId !== (sip.linkedHoldingId||null);
+    sip.linkedHoldingId = newLinkedHoldingId;
+    sip.linkedHolding = null; // clear the old legacy text label now that it's properly linked (or explicitly unlinked)
+    saveData();
+    if(linkChanged && newLinkedHoldingId){
+      backfillSipInstallments(sip.id); // offers to post any already-fired installments that predate this link
+      return; // backfillSipInstallments re-renders itself
+    }
+  }
+  saveData();
+  renderSips();
+}
+
+// Posts any of this SIP's installments that fired before it was linked (or
+// before a re-link) into the holding's invested amount — without this,
+// installments that happened before you set/changed the link would just sit
+// in the SIP's own history and never reach the fund.
+function backfillSipInstallments(sipId){
+  const sip = getSips().find(x=>x.id===sipId);
+  if(!sip || !sip.linkedHoldingId) return;
+  const holding = getNW().holdings.find(h=>h.id===sip.linkedHoldingId);
+  if(!holding) return;
+  const unposted = sip.installments.filter(i=>!i.postedToHolding);
+  if(unposted.length===0){ renderSips(); return; }
+  const total = unposted.reduce((s,i)=>s+i.amount,0);
+  if(!confirm(`"${sip.name}" has ${unposted.length} installment(s) totaling ${fmtAmount(total)} that fired before this link and never reached "${holding.name}". Add them to its invested amount now?`)){
+    renderSips();
+    return;
+  }
+  unposted.forEach(inst=>{
+    if(isSimpleValueClass(holding.assetClass)){
+      holding.investmentLog = holding.investmentLog || [];
+      holding.investmentLog.push({ id: nwUid(), date: inst.date, amount: inst.amount, note: `SIP amount added to this fund on ${inst.date} (backfilled)` });
+    } else {
+      holding.lots.push({ id: nwUid(), date: inst.date, quantity: 1, price: inst.amount, note: `SIP: ${sip.name} (backfilled)` });
+    }
+    inst.postedToHolding = true;
+  });
+  if(isSimpleValueClass(holding.assetClass)) recomputeSimpleLot(holding);
+  saveData();
+  renderAll();
+}
+function editInstallment(sipId, instId){
+  const sip = getSips().find(x=>x.id===sipId);
+  if(!sip) return;
+  const inst = sip.installments.find(i=>i.id===instId);
+  if(!inst) return;
+  const amtRaw = prompt('Amount:', inst.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', inst.date);
+  if(dateRaw===null) return;
+  inst.amount = amt;
+  inst.date = dateRaw || inst.date;
+  saveData();
+  renderSips();
+}
+function deleteInstallment(sipId, instId){
+  const sip = getSips().find(x=>x.id===sipId);
+  if(!sip) return;
+  if(!confirm('Delete this installment entry?')) return;
+  sip.installments = sip.installments.filter(i=>i.id!==instId);
+  saveData();
+  renderSips();
+}
+function deleteSip(id){
+  const sip = getSips().find(x=>x.id===id);
+  if(!sip) return;
+  if(!confirm(`Delete "${sip.name}" entirely, including its installment history? This can't be undone.`)) return;
+  markDeleted(id);
+  getNW().sips = getSips().filter(x=>x.id!==id);
+  saveData();
+  renderSips();
+}
+
+function buildSipCard(sip){
+  const invested = sipTotalInvested(sip);
+  const isStopped = sip.status==='stopped';
+  const paidThisYear = sipPaidThisYear(sip);
+  const yearlyReq = sipYearlyRequirement(sip);
+  const neededThisYear = sipNeededThisYear(sip);
+  const linkedHolding = sip.linkedHoldingId ? getNW().holdings.find(h=>h.id===sip.linkedHoldingId) : null;
+  const linkedName = linkedHolding ? linkedHolding.name : (sip.linkedHolding || null); // old text-based links still display
+  const unpostedCount = sip.linkedHoldingId ? sip.installments.filter(i=>!i.postedToHolding).length : 0;
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${isStopped?'stopped':'repaid'}">${isStopped?'Stopped':'Active'}</span>
+      <span class="h-name">${escapeHtml(sip.name)}</span>
+      <span class="h-meta">${linkedName?'→ '+escapeHtml(linkedName):''}</span>
     </div>
-    <div class="drive-status" id="priceRefreshStatus"></div>
-  </div>
-
-  <div class="holding-list" id="holdingList"></div>
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Total invested</div><div class="val" id="nwTotalInvested">0</div></div>
-    <div class="t"><div class="lbl">Current value</div><div class="val" id="nwTotalCurrent">0</div></div>
-    <div class="t"><div class="lbl">Unrealized gain/loss</div><div class="val" id="nwGainLoss">0</div></div>
-    <div class="t"><div class="lbl">Invested this month</div><div class="val" id="nwInvestedThisMonth">0</div></div>
-    <div class="t"><div class="lbl">Invested this year</div><div class="val" id="nwInvestedThisYear">0</div></div>
-    <div class="t"><div class="lbl">Realized profit/loss (all-time)</div><div class="val" id="nwRealizedTotal">0</div></div>
-    <div class="t"><div class="lbl">Total profit (realized + unrealized)</div><div class="val" id="nwTotalProfit">0</div></div>
-  </div>
-
-  <!-- Investment yearly statistics -->
-  <div class="nw-subhead">Yearly investment &amp; profit</div>
-  <div id="investYearlyTable" style="margin-bottom:36px;"></div>
-
-  <!-- Wealth trend -->
-  <div class="nw-subhead">Wealth trend, month by month</div>
-  <p class="section-desc" style="margin-top:-8px;">Net worth captured once per month, refreshed every time you open the tracker that month — so history builds up from here forward. Past months freeze once they're over; months before you started using this can't be filled in retroactively, since old market values were never recorded.</p>
-  <div class="chart-wrap" style="height:320px;margin-bottom:36px;"><canvas id="wealthTrendChart"></canvas></div>
-
-  <div class="charts-grid" style="margin-bottom:36px;">
-    <div class="chart-col">
-      <h3>Holdings by asset type</h3>
-      <div class="chart-wrap"><canvas id="holdingsChart"></canvas></div>
-      <div id="categoryBreakdownTable" style="margin-top:16px;"></div>
+    ${unpostedCount>0?`<div class="h-note" style="color:var(--brick);">⚠ ${unpostedCount} installment(s) haven't reached "${escapeHtml(linkedName||'the linked fund')}" yet — see Backfill below.</div>`:''}
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Amount / ${sipFrequencyLabel(sip)}</span>${fmtAmount(sip.amount)}</div>
+      <div class="h-figure"><span class="lbl">Started</span>${sip.startDate}</div>
+      <div class="h-figure"><span class="lbl">Total paid upto</span>${fmtAmount(invested)}</div>
+      <div class="h-figure"><span class="lbl">Installments</span>${sip.installments.length}</div>
+      <div class="h-figure"><span class="lbl">Paid this year</span>${fmtAmount(paidThisYear)}</div>
+      <div class="h-figure"><span class="lbl">Yearly requirement</span>${fmtAmount(yearlyReq)}</div>
+      <div class="h-figure"><span class="lbl">Monthly requirement</span>${fmtAmount(sipMonthlyEquivalent(sip))}</div>
+      <div class="h-figure h-gain${neededThisYear>0?' loss':''}"><span class="lbl">Needed this year</span>${fmtAmount(neededThisYear)}</div>
+      ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${sip.nextDueDate}</div>`:''}
     </div>
-    <div class="chart-col">
-      <div class="nw-subhead">Liabilities</div>
-      <div class="field-2col">
-        <div class="field"><label>Home loan</label><input type="number" id="nwHomeLoan" min="0" step="1000" value="0"></div>
-        <div class="field"><label>Car loan</label><input type="number" id="nwCarLoan" min="0" step="1000" value="0"></div>
-        <div class="field"><label>Credit card debt</label><input type="number" id="nwCcDebt" min="0" step="1000" value="0"></div>
-        <div class="field"><label>Personal loan</label><input type="number" id="nwPersonalLoan" min="0" step="1000" value="0"></div>
-      </div>
-      <div class="field" style="margin-top:16px;"><label>Other liabilities</label><input type="number" id="nwOtherLiability" min="0" step="1000" value="0"></div>
+    <div class="h-actions">
+      ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop SIP</button>'}
+      <button data-action="edit">✎ Edit</button>
+      ${unpostedCount>0?'<button class="buy" data-action="backfill">⏪ Backfill '+unpostedCount+' installment(s)</button>':''}
+      <button data-action="log">☰ Installments</button>
+      <button data-action="del">× Delete</button>
     </div>
-  </div>
+    <div class="h-log" id="siplog-${sip.id}" style="display:none;"></div>
+  `;
+  const stopBtn = card.querySelector('[data-action=stop]');
+  if(stopBtn) stopBtn.addEventListener('click', ()=>stopSip(sip.id));
+  const resumeBtn = card.querySelector('[data-action=resume]');
+  if(resumeBtn) resumeBtn.addEventListener('click', ()=>resumeSip(sip.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editSipInfo(sip.id));
+  const backfillBtn = card.querySelector('[data-action=backfill]');
+  if(backfillBtn) backfillBtn.addEventListener('click', ()=>backfillSipInstallments(sip.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('siplog-'+sip.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteSip(sip.id));
 
-  <div class="summary-grid" style="margin-bottom:44px;">
-    <div class="summary-card"><div class="label">Investment value</div><div class="value" id="nwInvestValue">0</div></div>
-    <div class="summary-card"><div class="label">Liabilities</div><div class="value brick" id="nwLiabTotal">0</div></div>
-    <div class="summary-card"><div class="label">Net worth</div><div class="value" id="nwGrandTotal" style="font-size:1.7rem;">0</div></div>
-  </div>
+  const logEl = card.querySelector('.h-log');
+  if(sip.installments.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No installments logged yet.</span>';
+  }
+  sip.installments.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(inst=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Added ${fmtAmount(inst.amount)} on ${inst.date}${linkedName?' → '+escapeHtml(linkedName):''}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editInstallment(sip.id, inst.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteInstallment(sip.id, inst.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  return card;
+}
 
-  <!-- Lending -->
-  <div class="section-head collapsible" id="lendingSectionHead"><h2><span class="section-arrow" id="lendingArrow">▾</span>Lending</h2></div>
-  <div id="lendingSectionBody">
-  <p class="section-desc">Money you've lent to people — <b>not included in net worth above</b>, since it's a debt someone owes you rather than wealth you're holding. Follows the same 🇺🇸/🇮🇳 currency toggle as everything else.</p>
+function renderSipsList(){
+  const wrap = document.getElementById('sipList');
+  const sips = getSips();
+  if(sips.length===0){
+    wrap.innerHTML = '<div class="empty-state">No SIPs logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  sips.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(sip=>wrap.appendChild(buildSipCard(sip)));
+}
+function renderSipsSummary(){
+  const sips = getSips();
+  const active = sips.filter(s=>s.status==='active');
+  document.getElementById('sipActiveCount').textContent = active.length;
+  document.getElementById('sipMonthlyTotal').textContent = fmtAmount(active.reduce((s,x)=>s+sipMonthlyEquivalent(x),0));
+  document.getElementById('sipTotalInvested').textContent = fmtAmount(sips.reduce((s,x)=>s+sipTotalInvested(x),0));
+  document.getElementById('sipPaidThisYear').textContent = fmtAmount(sips.reduce((s,x)=>s+sipPaidThisYear(x),0));
+  document.getElementById('sipYearlyReq').textContent = fmtAmount(active.reduce((s,x)=>s+sipYearlyRequirement(x),0));
+  document.getElementById('sipNeededThisYear').textContent = fmtAmount(active.reduce((s,x)=>s+sipNeededThisYear(x),0));
+}
+function renderSips(){
+  syncSipInstallments();
+  populateSipLinkedHoldingSelect();
+  renderSipsList();
+  renderSipsSummary();
+  renderNetWorth(); // a SIP sync may have just added a buy to a linked holding — keep that in sync too
+}
 
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Add a loan given</div>
-      <div class="holding-form">
-        <div>
-          <label>Lent to</label>
-          <input type="text" id="lendName" placeholder="Name of person/party" maxlength="80">
-        </div>
-        <div>
-          <label>Amount lent</label>
-          <input type="number" id="lendAmount" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <label>Date lent</label>
-          <input type="date" id="lendDate">
-        </div>
-        <div>
-          <label>Note <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
-          <input type="text" id="lendNote" placeholder="e.g. for medical expense, to be repaid monthly" maxlength="140">
-        </div>
-        <div>
-          <button class="btn-primary" id="addLending" style="padding:9px 16px;">+ Add</button>
-        </div>
-      </div>
+// ---------- Insurance ----------
+function getInsurance(){ return getNW().insurance; }
+const INS_FREQ_LABEL = { 1:'Monthly', 3:'Quarterly', 6:'Half-yearly', 12:'Yearly' };
+
+function insuranceTotalPaid(ins){ return ins.payments.reduce((s,p)=>s+p.amount,0); }
+function insurancePaidThisYear(ins){
+  const year = todayLocalISO().slice(0,4);
+  return ins.payments.filter(p=>p.date.slice(0,4)===year).reduce((s,p)=>s+p.amount,0);
+}
+function insuranceYearlyRequirement(ins){ return ins.premiumAmount * (12/ins.frequencyMonths); }
+function insuranceMonthlyRequirement(ins){ return ins.premiumAmount / ins.frequencyMonths; }
+function insuranceNeededThisYear(ins){ return Math.max(0, insuranceYearlyRequirement(ins) - insurancePaidThisYear(ins)); }
+function insuranceStatusBadge(ins, today){
+  if(ins.status==='lapsed') return 'stopped';
+  const days = daysBetween(today, ins.nextDueDate);
+  if(days<0) return 'overdue';
+  if(days<=14) return 'due-soon';
+  return 'repaid'; // reuses the green "good standing" color
+}
+const INS_STATUS_TEXT = { overdue:'Overdue', 'due-soon':'Due soon', repaid:'Active', stopped:'Lapsed' };
+
+document.getElementById('addInsurance').addEventListener('click', ()=>{
+  const name = document.getElementById('insName').value.trim();
+  const provider = document.getElementById('insProvider').value.trim();
+  const boughtDate = document.getElementById('insBoughtDate').value || todayLocalISO();
+  const premium = +document.getElementById('insPremium').value;
+  const freq = +document.getElementById('insFrequency').value;
+
+  if(!name){ alert('Give this policy a name.'); return; }
+  if(!premium || premium<=0){ alert('Enter a premium amount greater than zero.'); return; }
+
+  getInsurance().push({
+    id: nwUid(),
+    name,
+    provider: provider || null,
+    boughtDate,
+    premiumAmount: premium,
+    frequencyMonths: freq,
+    nextDueDate: addMonthsClamped(boughtDate, freq),
+    status: 'active',
+    payments: [{ id: nwUid(), date: boughtDate, amount: premium }] // first premium, paid at purchase
+  });
+  saveData();
+  document.getElementById('insName').value = '';
+  document.getElementById('insProvider').value = '';
+  document.getElementById('insPremium').value = '';
+  document.getElementById('insBoughtDate').value = todayLocalISO();
+  renderInsurance();
+});
+
+function payPremium(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  const amtRaw = prompt(`Premium payment for "${ins.name}":`, ins.premiumAmount);
+  if(!amtRaw) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date paid (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  ins.payments.push({ id: nwUid(), date, amount: amt });
+  ins.nextDueDate = addMonthsClamped(ins.nextDueDate, ins.frequencyMonths);
+  saveData();
+  renderInsurance();
+}
+function editInsuranceInfo(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  const newName = prompt('Policy name:', ins.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newProvider = prompt('Bought from:', ins.provider||'');
+  if(newProvider===null) return;
+  const newPremium = prompt('Premium amount:', ins.premiumAmount);
+  if(newPremium===null) return;
+  const premium = +newPremium;
+  if(!premium || premium<=0){ alert('Enter a valid amount.'); return; }
+  ins.name = newName.trim();
+  ins.provider = newProvider.trim() || null;
+  ins.premiumAmount = premium;
+  saveData();
+  renderInsurance();
+}
+function setNextDueDate(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  const raw = prompt('Next due date (YYYY-MM-DD):', ins.nextDueDate);
+  if(raw===null) return;
+  if(raw) ins.nextDueDate = raw;
+  saveData();
+  renderInsurance();
+}
+function toggleInsuranceLapsed(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  ins.status = ins.status==='lapsed' ? 'active' : 'lapsed';
+  saveData();
+  renderInsurance();
+}
+function editPayment(insId, payId){
+  const ins = getInsurance().find(x=>x.id===insId);
+  if(!ins) return;
+  const pay = ins.payments.find(p=>p.id===payId);
+  if(!pay) return;
+  const amtRaw = prompt('Amount:', pay.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', pay.date);
+  if(dateRaw===null) return;
+  pay.amount = amt;
+  pay.date = dateRaw || pay.date;
+  saveData();
+  renderInsurance();
+}
+function deletePayment(insId, payId){
+  const ins = getInsurance().find(x=>x.id===insId);
+  if(!ins) return;
+  if(!confirm('Delete this payment entry?')) return;
+  ins.payments = ins.payments.filter(p=>p.id!==payId);
+  saveData();
+  renderInsurance();
+}
+function deleteInsurance(id){
+  const ins = getInsurance().find(x=>x.id===id);
+  if(!ins) return;
+  if(!confirm(`Delete "${ins.name}" entirely, including its payment history? This can't be undone.`)) return;
+  markDeleted(id);
+  getNW().insurance = getInsurance().filter(x=>x.id!==id);
+  saveData();
+  renderInsurance();
+}
+
+function buildInsuranceCard(ins, today){
+  const totalPaid = insuranceTotalPaid(ins);
+  const badge = insuranceStatusBadge(ins, today);
+  const paidThisYear = insurancePaidThisYear(ins);
+  const yearlyReq = insuranceYearlyRequirement(ins);
+  const neededThisYear = insuranceNeededThisYear(ins);
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${badge}">${INS_STATUS_TEXT[badge]}</span>
+      <span class="h-name">${escapeHtml(ins.name)}</span>
+      <span class="h-meta">${ins.provider?escapeHtml(ins.provider):''}</span>
     </div>
-  </div>
-
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Total lent</div><div class="val" id="lendTotalLent">0</div></div>
-    <div class="t"><div class="lbl">Total repaid</div><div class="val" id="lendTotalRepaid">0</div></div>
-    <div class="t"><div class="lbl">Outstanding</div><div class="val" id="lendTotalOutstanding">0</div></div>
-  </div>
-
-  <div class="holding-list" id="lendingList" style="margin-bottom:44px;"></div>
-  </div>
-
-  <!-- Remittances -->
-  <div class="section-head collapsible" id="remitSectionHead"><h2><span class="section-arrow" id="remitArrow">▾</span>Remittances (USA → India)</h2></div>
-  <div id="remitSectionBody">
-  <p class="section-desc">Money sent from the US to India — to your own account, your parents, your sisters, wherever. Tracked in both currencies at once, by recipient/account and by year. Not included in net worth (it's a transfer, not new wealth) and doesn't follow the 🇺🇸/🇮🇳 toggle above — always shown together.</p>
-
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Add a transfer</div>
-      <div class="holding-form">
-        <div>
-          <label>Date</label>
-          <input type="date" id="remitDate">
-        </div>
-        <div>
-          <label>Account / Recipient</label>
-          <input type="text" id="remitRecipient" placeholder="e.g. My Account, Parents, Sister" maxlength="60" list="remitRecipientOptions">
-          <datalist id="remitRecipientOptions"></datalist>
-        </div>
-        <div>
-          <label>USD sent</label>
-          <input type="number" id="remitUsd" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <label>INR received</label>
-          <input type="number" id="remitInr" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <label>Note <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
-          <input type="text" id="remitNote" placeholder="optional" maxlength="140">
-        </div>
-        <div>
-          <button class="btn-primary" id="addRemit" style="padding:9px 16px;">+ Add</button>
-        </div>
-      </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Premium</span>${fmtAmount(ins.premiumAmount)} / ${INS_FREQ_LABEL[ins.frequencyMonths]||''}</div>
+      <div class="h-figure"><span class="lbl">Bought</span>${ins.boughtDate}</div>
+      <div class="h-figure"><span class="lbl">Next due</span>${ins.nextDueDate}</div>
+      <div class="h-figure"><span class="lbl">Total paid upto</span>${fmtAmount(totalPaid)}</div>
+      <div class="h-figure"><span class="lbl">Paid this year</span>${fmtAmount(paidThisYear)}</div>
+      <div class="h-figure"><span class="lbl">Yearly requirement</span>${fmtAmount(yearlyReq)}</div>
+      <div class="h-figure"><span class="lbl">Monthly requirement</span>${fmtAmount(insuranceMonthlyRequirement(ins))}</div>
+      <div class="h-figure h-gain${neededThisYear>0?' loss':''}"><span class="lbl">Needed this year</span>${fmtAmount(neededThisYear)}</div>
     </div>
-  </div>
-
-  <div class="filter-bar" style="margin-bottom:16px;">
-    <select id="remitRecipientFilter"><option value="">All accounts/recipients</option></select>
-    <select id="remitYearFilter"><option value="__all__">All years</option></select>
-  </div>
-
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Total USD sent</div><div class="val" id="remitTotalUsd">$0</div></div>
-    <div class="t"><div class="lbl">Total INR received</div><div class="val" id="remitTotalInr">₹0</div></div>
-    <div class="t"><div class="lbl">Average rate</div><div class="val" id="remitAvgRate">—</div></div>
-    <div class="t"><div class="lbl">Transfers</div><div class="val" id="remitCount">0</div></div>
-  </div>
-
-  <div class="nw-subhead">By account / recipient</div>
-  <div id="remitRecipientTable" style="margin-bottom:28px;"></div>
-
-  <div class="nw-subhead">By year</div>
-  <div id="remitYearTable" style="margin-bottom:28px;"></div>
-
-  <div class="nw-subhead">By account, year by year</div>
-  <p class="section-desc" style="margin-top:-8px;">How much went to each account, broken down by year — scroll sideways on smaller screens.</p>
-  <div style="overflow-x:auto;margin-bottom:28px;">
-    <div id="remitAccountYearTable" style="min-width:500px;"></div>
-  </div>
-
-  <div class="cat-group-header" id="remitListToggle">
-    <span class="cat-arrow" id="remitListArrow">▸</span>
-    <span class="cat-group-name">All transfers</span>
-    <span class="cat-group-meta" id="remitListMeta"></span>
-  </div>
-  <div id="remitList" style="margin-bottom:44px;display:none;"></div>
-  </div>
-
-  <!-- SIPs -->
-  <div class="section-head collapsible" id="sipsSectionHead"><h2><span class="section-arrow" id="sipsArrow">▾</span>SIPs</h2></div>
-  <div id="sipsSectionBody">
-  <p class="section-desc">Ongoing SIPs — each installment is logged automatically on its due date, every month, until you stop it. Not included in net worth directly; update the linked holding's current value separately to reflect what it's actually worth.</p>
-
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Add a SIP</div>
-      <div class="holding-form">
-        <div>
-          <label>SIP name</label>
-          <input type="text" id="sipName" placeholder="e.g. HDFC Flexicap SIP" maxlength="80">
-        </div>
-        <div>
-          <label>Amount per installment</label>
-          <input type="number" id="sipAmount" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <label>Frequency</label>
-          <select id="sipFrequency">
-            <option value="days:7">Weekly</option>
-            <option value="months:1" selected>Monthly</option>
-            <option value="months:3">Quarterly</option>
-          </select>
-        </div>
-        <div>
-          <label>Start date</label>
-          <input type="date" id="sipStartDate">
-        </div>
-        <div>
-          <label>Linked to <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
-          <select id="sipLinkedHolding"></select>
-        </div>
-        <div>
-          <button class="btn-primary" id="addSip" style="padding:9px 16px;">+ Add</button>
-        </div>
-      </div>
+    <div class="h-actions">
+      <button class="buy" data-action="pay">+ Pay premium</button>
+      <button data-action="duedate">📅 Set next due</button>
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="lapsed">${ins.status==='lapsed'?'Mark active':'Mark lapsed'}</button>
+      <button data-action="log">☰ Payments</button>
+      <button data-action="del">× Delete</button>
     </div>
-  </div>
+    <div class="h-log" id="inslog-${ins.id}" style="display:none;"></div>
+  `;
+  card.querySelector('[data-action=pay]').addEventListener('click', ()=>payPremium(ins.id));
+  card.querySelector('[data-action=duedate]').addEventListener('click', ()=>setNextDueDate(ins.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editInsuranceInfo(ins.id));
+  card.querySelector('[data-action=lapsed]').addEventListener('click', ()=>toggleInsuranceLapsed(ins.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('inslog-'+ins.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteInsurance(ins.id));
 
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Active SIPs</div><div class="val" id="sipActiveCount">0</div></div>
-    <div class="t"><div class="lbl">Monthly requirement</div><div class="val" id="sipMonthlyTotal">0</div></div>
-    <div class="t"><div class="lbl">Total paid upto now</div><div class="val" id="sipTotalInvested">0</div></div>
-    <div class="t"><div class="lbl">Paid this year</div><div class="val" id="sipPaidThisYear">0</div></div>
-    <div class="t"><div class="lbl">Yearly requirement</div><div class="val" id="sipYearlyReq">0</div></div>
-    <div class="t"><div class="lbl">Needed this year</div><div class="val" id="sipNeededThisYear">0</div></div>
-  </div>
+  const logEl = card.querySelector('.h-log');
+  if(ins.payments.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No payments logged yet.</span>';
+  }
+  ins.payments.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Paid ${fmtAmount(p.amount)} on ${p.date}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editPayment(ins.id, p.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deletePayment(ins.id, p.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  return card;
+}
 
-  <div class="holding-list" id="sipList" style="margin-bottom:44px;"></div>
-  </div>
+function renderInsuranceList(){
+  const wrap = document.getElementById('insuranceList');
+  const insurance = getInsurance();
+  if(insurance.length===0){
+    wrap.innerHTML = '<div class="empty-state">No policies logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  const today = todayLocalISO();
+  insurance.slice()
+    .sort((a,b)=>a.nextDueDate.localeCompare(b.nextDueDate))
+    .forEach(ins=>wrap.appendChild(buildInsuranceCard(ins, today)));
+}
+function renderInsuranceSummary(){
+  const insurance = getInsurance();
+  const active = insurance.filter(i=>i.status!=='lapsed');
+  document.getElementById('insActiveCount').textContent = active.length;
+  document.getElementById('insTotalPaid').textContent = fmtAmount(insurance.reduce((s,i)=>s+insuranceTotalPaid(i),0));
+  document.getElementById('insPaidThisYear').textContent = fmtAmount(insurance.reduce((s,i)=>s+insurancePaidThisYear(i),0));
+  document.getElementById('insYearlyReq').textContent = fmtAmount(active.reduce((s,i)=>s+insuranceYearlyRequirement(i),0));
+  document.getElementById('insMonthlyReq').textContent = fmtAmount(active.reduce((s,i)=>s+insuranceMonthlyRequirement(i),0));
+  document.getElementById('insNeededThisYear').textContent = fmtAmount(active.reduce((s,i)=>s+insuranceNeededThisYear(i),0));
+}
+function renderInsurance(){
+  renderInsuranceList();
+  renderInsuranceSummary();
+}
 
-  <!-- Insurance -->
-  <div class="section-head collapsible" id="insuranceSectionHead"><h2><span class="section-arrow" id="insuranceArrow">▾</span>Insurance</h2></div>
-  <div id="insuranceSectionBody">
-  <p class="section-desc">Ongoing insurance policies — track where you bought each one, what's due next, and how much you've paid in total. Not included in net worth.</p>
+// ---------- Upcoming due-date notifications ----------
+// SIPs and recurring expenses: warn 5 days out. Insurance: warn a full month
+// out, since premiums are usually bigger and less convenient to scramble for.
+function renderNotifications(){
+  const wrap = document.getElementById('upcomingNotifications');
+  const today = todayLocalISO();
+  const items = [];
 
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Add a policy</div>
-      <div class="holding-form">
-        <div>
-          <label>Policy name</label>
-          <input type="text" id="insName" placeholder="e.g. Term Life, Health Insurance" maxlength="80">
-        </div>
-        <div>
-          <label>Bought from</label>
-          <input type="text" id="insProvider" placeholder="e.g. LIC, Star Health" maxlength="80">
-        </div>
-        <div>
-          <label>Bought date</label>
-          <input type="date" id="insBoughtDate">
-        </div>
-        <div>
-          <label>Premium amount</label>
-          <input type="number" id="insPremium" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <label>Frequency</label>
-          <select id="insFrequency">
-            <option value="1">Monthly</option>
-            <option value="3">Quarterly</option>
-            <option value="6">Half-yearly</option>
-            <option value="12" selected>Yearly</option>
-          </select>
-        </div>
-        <div>
-          <button class="btn-primary" id="addInsurance" style="padding:9px 16px;">+ Add</button>
-        </div>
-      </div>
+  getSips().forEach(sip=>{
+    if(sip.status!=='active') return;
+    const days = daysBetween(today, sip.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, kind:'sip', text:`SIP "${sip.name}" — ${fmtAmount(sip.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${sip.nextDueDate})` });
+    }
+  });
+  getRecurring().forEach(r=>{
+    if(r.status!=='active') return;
+    const days = daysBetween(today, r.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, kind:'recurring', text:`Recurring "${r.name}" — ${fmtAmount(r.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${r.nextDueDate})` });
+    }
+  });
+  getSwps().forEach(swp=>{
+    if(swp.status!=='active') return;
+    const days = daysBetween(today, swp.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, kind:'swp', text:`SWP "${swp.name}" — ${fmtAmount(swp.amount)} withdrawal due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${swp.nextDueDate})` });
+    }
+  });
+  getInsurance().forEach(ins=>{
+    if(ins.status==='lapsed') return;
+    const days = daysBetween(today, ins.nextDueDate);
+    if(days>=0 && days<=30){
+      items.push({ days, kind:'insurance', text:`Insurance "${ins.name}" premium — ${fmtAmount(ins.premiumAmount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${ins.nextDueDate})` });
+    }
+  });
+
+  if(items.length===0){ wrap.style.display='none'; wrap.innerHTML=''; return; }
+  items.sort((a,b)=>a.days-b.days);
+  let html = `<div class="notify-banner"><div class="notify-title">🔔 Coming up (${currentCurrency})</div>`;
+  items.forEach(item=>{
+    const soon = item.days>5; // only insurance items can be in the 6-30 day range
+    const whenLabel = item.days===0 ? 'TODAY' : item.days+'d';
+    html += `<div class="notify-row"><span class="notify-when${soon?' soon':''}">${whenLabel}</span><span>${escapeHtml(item.text)}</span></div>`;
+  });
+  html += '</div>';
+  wrap.style.display = '';
+  wrap.innerHTML = html;
+}
+
+// ---------- Recurring Expenses ("Definite Spending") ----------
+// Same idea as SIPs, but for expenses: fires automatically on schedule and
+// logs a real transaction each time, so it shows up in your normal spending
+// stats/budget/charts — not a separate parallel ledger.
+function getRecurring(){ return getNW().recurringExpenses; }
+
+function recurringFrequencyLabel(r){
+  return r.frequencyUnit==='months' ? 'Monthly' : `Every ${r.frequencyValue} day${r.frequencyValue===1?'':'s'}`;
+}
+function recurringMonthlyEquivalent(r){
+  return r.frequencyUnit==='days' ? r.amount*(30.44/r.frequencyValue) : r.amount;
+}
+function recurringTotalLogged(r){ return r.loggedTx.reduce((s,x)=>s+x.amount,0); }
+
+function populateRecurringCategorySelect(){
+  const sel = document.getElementById('recurCategory');
+  const prevValue = sel.value;
+  sel.innerHTML = '';
+  categories.expense.forEach(c=>{
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    sel.appendChild(opt);
+  });
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+}
+
+// Catches up any due dates that have passed, logging a real expense
+// transaction for each one — this is what makes it "automatic."
+function syncRecurringExpenses(){
+  const today = todayLocalISO();
+  let changed = false;
+  getRecurring().forEach(r=>{
+    if(r.status!=='active') return;
+    let guard = 0;
+    while(r.nextDueDate<=today && guard<600){
+      const tx = { id: uid(), date: r.nextDueDate, type:'expense', category:r.category, description:`Recurring: ${r.name}`, amount:r.amount, currency:currentCurrency };
+      transactions.push(tx);
+      r.loggedTx.push({ id: tx.id, date: r.nextDueDate, amount: r.amount });
+      r.nextDueDate = advanceDate(r.nextDueDate, r.frequencyUnit, r.frequencyValue);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+document.getElementById('addRecurring').addEventListener('click', ()=>{
+  const name = document.getElementById('recurName').value.trim();
+  const amount = +document.getElementById('recurAmount').value;
+  const category = document.getElementById('recurCategory').value;
+  const frequencyUnit = document.getElementById('recurFrequencyType').value;
+  const daysN = +document.getElementById('recurDaysN').value;
+  const startDate = document.getElementById('recurStartDate').value || todayLocalISO();
+
+  if(!name){ alert('Give this a name.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+  if(frequencyUnit==='days' && (!daysN || daysN<=0)){ alert('Enter how many days between each one.'); return; }
+
+  getRecurring().push({
+    id: nwUid(),
+    name,
+    amount,
+    category,
+    frequencyUnit,
+    frequencyValue: frequencyUnit==='days' ? daysN : 1,
+    startDate,
+    status: 'active',
+    stoppedDate: null,
+    nextDueDate: startDate,
+    loggedTx: []
+  });
+  saveData();
+  document.getElementById('recurName').value = '';
+  document.getElementById('recurAmount').value = '';
+  document.getElementById('recurDaysN').value = '';
+  document.getElementById('recurStartDate').value = todayLocalISO();
+  renderRecurring();
+});
+
+function stopRecurring(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm(`Stop "${r.name}"? No more transactions will be logged automatically after today.`)) return;
+  r.status = 'stopped';
+  r.stoppedDate = todayLocalISO();
+  saveData();
+  renderRecurring();
+}
+function resumeRecurring(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  r.status = 'active';
+  r.stoppedDate = null;
+  if(r.nextDueDate < todayLocalISO()) r.nextDueDate = todayLocalISO();
+  saveData();
+  renderRecurring();
+}
+function editRecurringInfo(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  const newName = prompt('Name:', r.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newAmt = prompt('Amount (applies to future occurrences only):', r.amount);
+  if(newAmt===null) return;
+  const amt = +newAmt;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  r.name = newName.trim();
+  r.amount = amt;
+  saveData();
+  renderRecurring();
+}
+function deleteRecurring(id){
+  const r = getRecurring().find(x=>x.id===id);
+  if(!r) return;
+  const removeTx = confirm(`Delete "${r.name}"? Click OK to also remove the ${r.loggedTx.length} transaction(s) it already logged, or Cancel to keep those transactions and just stop future ones.`);
+  if(removeTx){
+    const loggedIds = new Set(r.loggedTx.map(l=>l.id));
+    loggedIds.forEach(markDeleted);
+    transactions = transactions.filter(t=>!loggedIds.has(t.id));
+  }
+  markDeleted(id);
+  getNW().recurringExpenses = getRecurring().filter(x=>x.id!==id);
+  saveData();
+  renderAll();
+}
+
+function buildRecurringCard(r, today){
+  const totalLogged = recurringTotalLogged(r);
+  const isStopped = r.status==='stopped';
+  const daysUntilDue = daysBetween(today, r.nextDueDate);
+  let badge = 'repaid', badgeText = 'Active';
+  if(isStopped){ badge='stopped'; badgeText='Stopped'; }
+  else if(daysUntilDue<0){ badge='overdue'; badgeText='Overdue'; }
+  else if(daysUntilDue<=3){ badge='due-soon'; badgeText='Due soon'; }
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${badge}">${badgeText}</span>
+      <span class="h-name">${escapeHtml(r.name)}</span>
+      <span class="h-meta">${escapeHtml(r.category)}</span>
     </div>
-  </div>
-
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Active policies</div><div class="val" id="insActiveCount">0</div></div>
-    <div class="t"><div class="lbl">Total paid upto now</div><div class="val" id="insTotalPaid">0</div></div>
-    <div class="t"><div class="lbl">Paid this year</div><div class="val" id="insPaidThisYear">0</div></div>
-    <div class="t"><div class="lbl">Yearly requirement</div><div class="val" id="insYearlyReq">0</div></div>
-    <div class="t"><div class="lbl">Monthly requirement</div><div class="val" id="insMonthlyReq">0</div></div>
-    <div class="t"><div class="lbl">Needed this year</div><div class="val" id="insNeededThisYear">0</div></div>
-  </div>
-
-  <div class="holding-list" id="insuranceList" style="margin-bottom:44px;"></div>
-  </div>
-
-  <!-- Recurring Expenses -->
-  <div class="section-head collapsible" id="recurringSectionHead"><h2><span class="section-arrow" id="recurringArrow">▾</span>Recurring expenses</h2></div>
-  <div id="recurringSectionBody">
-  <p class="section-desc">"Definite spending" — a fixed bill that repeats monthly or every N days. It logs itself automatically as a real expense in your transactions (and doubles as a reminder, showing what's due next) until you stop it.</p>
-
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Add a recurring expense</div>
-      <div class="holding-form">
-        <div>
-          <label>Name</label>
-          <input type="text" id="recurName" placeholder="e.g. Rent, Netflix, Gym" maxlength="80">
-        </div>
-        <div>
-          <label>Amount</label>
-          <input type="number" id="recurAmount" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <label>Category</label>
-          <select id="recurCategory"></select>
-        </div>
-        <div>
-          <label>Frequency</label>
-          <select id="recurFrequencyType">
-            <option value="months">Monthly</option>
-            <option value="days">Every N days</option>
-          </select>
-        </div>
-        <div>
-          <label>N days <span style="font-weight:400;color:var(--ink-soft);">(if "Every N days")</span></label>
-          <input type="number" id="recurDaysN" min="1" step="1" placeholder="e.g. 15">
-        </div>
-        <div>
-          <label>Start date</label>
-          <input type="date" id="recurStartDate">
-        </div>
-        <div>
-          <button class="btn-primary" id="addRecurring" style="padding:9px 16px;">+ Add</button>
-        </div>
-      </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Amount</span>${fmtAmount(r.amount)}</div>
+      <div class="h-figure"><span class="lbl">Frequency</span>${recurringFrequencyLabel(r)}</div>
+      <div class="h-figure"><span class="lbl">Total logged</span>${fmtAmount(totalLogged)}</div>
+      <div class="h-figure"><span class="lbl">Occurrences</span>${r.loggedTx.length}</div>
+      ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${r.nextDueDate}</div>`:''}
     </div>
-  </div>
-
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Active</div><div class="val" id="recurActiveCount">0</div></div>
-    <div class="t"><div class="lbl">Monthly-equivalent total</div><div class="val" id="recurMonthlyTotal">0</div></div>
-    <div class="t"><div class="lbl">Total logged so far</div><div class="val" id="recurTotalLogged">0</div></div>
-  </div>
-
-  <div class="holding-list" id="recurringList" style="margin-bottom:44px;"></div>
-  </div>
-
-  <!-- SWP -->
-  <div class="section-head collapsible" id="swpSectionHead"><h2><span class="section-arrow" id="swpArrow">▾</span>SWP</h2></div>
-  <div id="swpSectionBody">
-  <p class="section-desc">Systematic Withdrawal — auto-withdraws from one holding on schedule, and optionally routes that same amount straight into another holding (like a Systematic Transfer Plan). Leave "Invest into" as none if you just want a plain withdrawal.</p>
-
-  <div class="tracker-grid" style="margin-bottom:20px;">
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Add a SWP</div>
-      <div class="holding-form">
-        <div>
-          <label>Name</label>
-          <input type="text" id="swpName" placeholder="e.g. Retirement drawdown" maxlength="80">
-        </div>
-        <div>
-          <label>Amount per withdrawal</label>
-          <input type="number" id="swpAmount" min="0" step="1" placeholder="0">
-        </div>
-        <div>
-          <label>Withdraw from</label>
-          <select id="swpSourceHolding"></select>
-        </div>
-        <div>
-          <label>Invest into <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
-          <select id="swpDestHolding"></select>
-        </div>
-        <div>
-          <label>Frequency</label>
-          <select id="swpFrequency">
-            <option value="days:7">Weekly</option>
-            <option value="months:1" selected>Monthly</option>
-            <option value="months:3">Quarterly</option>
-          </select>
-        </div>
-        <div>
-          <label>Start date</label>
-          <input type="date" id="swpStartDate">
-        </div>
-        <div>
-          <button class="btn-primary" id="addSwp" style="padding:9px 16px;">+ Add</button>
-        </div>
-      </div>
+    <div class="h-actions">
+      ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop</button>'}
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="log">☰ Log</button>
+      <button data-action="del">× Delete</button>
     </div>
-  </div>
+    <div class="h-log" id="recurlog-${r.id}" style="display:none;"></div>
+  `;
+  const stopBtn = card.querySelector('[data-action=stop]');
+  if(stopBtn) stopBtn.addEventListener('click', ()=>stopRecurring(r.id));
+  const resumeBtn = card.querySelector('[data-action=resume]');
+  if(resumeBtn) resumeBtn.addEventListener('click', ()=>resumeRecurring(r.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editRecurringInfo(r.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('recurlog-'+r.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteRecurring(r.id));
 
-  <div class="nw-totals">
-    <div class="t"><div class="lbl">Active SWPs</div><div class="val" id="swpActiveCount">0</div></div>
-    <div class="t"><div class="lbl">Monthly-equivalent withdrawal</div><div class="val" id="swpMonthlyTotal">0</div></div>
-    <div class="t"><div class="lbl">Total withdrawn</div><div class="val" id="swpTotalWithdrawn">0</div></div>
-  </div>
+  const logEl = card.querySelector('.h-log');
+  if(r.loggedTx.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">Nothing logged yet.</span>';
+  }
+  r.loggedTx.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(entry=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Logged ${fmtAmount(entry.amount)} on ${entry.date}</span>`;
+    logEl.appendChild(row);
+  });
+  return card;
+}
 
-  <div class="holding-list" id="swpList" style="margin-bottom:44px;"></div>
-  </div>
+function renderRecurringList(){
+  const wrap = document.getElementById('recurringList');
+  const recurring = getRecurring();
+  if(recurring.length===0){
+    wrap.innerHTML = '<div class="empty-state">No recurring expenses logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  const today = todayLocalISO();
+  recurring.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(r=>wrap.appendChild(buildRecurringCard(r, today)));
+}
+function renderRecurringSummary(){
+  const recurring = getRecurring();
+  const active = recurring.filter(r=>r.status==='active');
+  document.getElementById('recurActiveCount').textContent = active.length;
+  document.getElementById('recurMonthlyTotal').textContent = fmtAmount(active.reduce((s,r)=>s+recurringMonthlyEquivalent(r),0));
+  document.getElementById('recurTotalLogged').textContent = fmtAmount(recurring.reduce((s,r)=>s+recurringTotalLogged(r),0));
+}
+function renderRecurring(){
+  syncRecurringExpenses();
+  populateRecurringCategorySelect();
+  renderRecurringList();
+  renderRecurringSummary();
+  renderSummary(); // a newly-logged recurring expense affects income/expense totals too
+  renderList();
+}
 
-  <!-- Manage Categories -->
-  <div class="section-head collapsible" id="manageCatSectionHead"><h2><span class="section-arrow" id="manageCatArrow">▾</span>Manage categories</h2></div>
-  <div id="manageCatSectionBody">
-  <p class="section-desc">Remove ones you don't need. This only affects new transactions — anything already logged keeps its category label, and any budget you'd set for it is removed along with it.</p>
-  <div class="tracker-grid" style="margin-bottom:44px;">
-    <div class="form-col">
-      <div class="nw-subhead">Expense categories</div>
-      <div id="manageExpenseCategories"></div>
+// ---------- SWP (Systematic Withdrawal, optionally feeding into a SIP-style destination) ----------
+function getSwps(){ return getNW().swps; }
+
+function swpFrequencyLabel(swp){ return SIP_FREQ_LABEL[`${swp.frequencyUnit}:${swp.frequencyValue}`] || `Every ${swp.frequencyValue} ${swp.frequencyUnit}`; }
+function swpMonthlyEquivalent(swp){
+  return swp.frequencyUnit==='days' ? swp.amount*(30.44/swp.frequencyValue) : swp.amount/swp.frequencyValue;
+}
+function swpTotalWithdrawn(swp){ return swp.withdrawals.reduce((s,w)=>s+w.amount,0); }
+
+function populateSwpHoldingSelects(){
+  const holdings = getNW().holdings;
+  [['swpSourceHolding', false], ['swpDestHolding', true]].forEach(([id, allowNone])=>{
+    const sel = document.getElementById(id);
+    const prevValue = sel.value;
+    sel.innerHTML = allowNone ? '<option value="">— none, just withdraw —</option>' : '';
+    holdings.forEach(h=>{
+      const opt = document.createElement('option');
+      opt.value = h.id;
+      opt.textContent = `${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`;
+      sel.appendChild(opt);
+    });
+    if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+  });
+}
+
+function syncSwpWithdrawals(){
+  const today = todayLocalISO();
+  let changed = false;
+  getSwps().forEach(swp=>{
+    if(swp.status!=='active') return;
+    let guard = 0;
+    while(swp.nextDueDate<=today && guard<600){
+      const date = swp.nextDueDate;
+      const source = getNW().holdings.find(h=>h.id===swp.sourceHoldingId);
+      const withdrawal = { id: nwUid(), date, amount:0, realizedPL:0, shortfall:true, postedToDest: false };
+      if(source){
+        const result = withdrawFromHoldingAuto(source, date, swp.amount);
+        withdrawal.amount = result.withdrawn;
+        withdrawal.realizedPL = result.realizedPL;
+        withdrawal.shortfall = result.shortfall;
+        if(swp.destHoldingId && result.withdrawn>0){
+          const dest = getNW().holdings.find(h=>h.id===swp.destHoldingId);
+          if(dest){
+            postContributionToHolding(dest, date, result.withdrawn, `SWP transfer: ${swp.name}`);
+            withdrawal.postedToDest = true;
+          }
+        }
+      }
+      swp.withdrawals.push(withdrawal);
+      swp.nextDueDate = advanceDate(swp.nextDueDate, swp.frequencyUnit, swp.frequencyValue);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+document.getElementById('addSwp').addEventListener('click', ()=>{
+  const name = document.getElementById('swpName').value.trim();
+  const amount = +document.getElementById('swpAmount').value;
+  const sourceHoldingId = document.getElementById('swpSourceHolding').value || null;
+  const destHoldingId = document.getElementById('swpDestHolding').value || null;
+  const [frequencyUnit, freqValueRaw] = document.getElementById('swpFrequency').value.split(':');
+  const frequencyValue = +freqValueRaw;
+  const startDate = document.getElementById('swpStartDate').value || todayLocalISO();
+
+  if(!name){ alert('Give this SWP a name.'); return; }
+  if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
+  if(!sourceHoldingId){ alert('Pick a holding to withdraw from.'); return; }
+  if(sourceHoldingId===destHoldingId){ alert('Source and destination can\'t be the same holding.'); return; }
+
+  getSwps().push({
+    id: nwUid(),
+    name,
+    amount,
+    sourceHoldingId,
+    destHoldingId,
+    frequencyUnit,
+    frequencyValue,
+    startDate,
+    status: 'active',
+    stoppedDate: null,
+    nextDueDate: startDate,
+    withdrawals: []
+  });
+  saveData();
+  document.getElementById('swpName').value = '';
+  document.getElementById('swpAmount').value = '';
+  document.getElementById('swpStartDate').value = todayLocalISO();
+  renderSwps();
+});
+
+function stopSwp(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  if(!confirm(`Stop "${swp.name}"? No more withdrawals will happen automatically after today.`)) return;
+  swp.status = 'stopped';
+  swp.stoppedDate = todayLocalISO();
+  saveData();
+  renderSwps();
+}
+function resumeSwp(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  swp.status = 'active';
+  swp.stoppedDate = null;
+  if(swp.nextDueDate < todayLocalISO()) swp.nextDueDate = todayLocalISO();
+  saveData();
+  renderSwps();
+}
+function editSwpInfo(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  const newName = prompt('SWP name:', swp.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newAmt = prompt(`Amount per ${swpFrequencyLabel(swp).toLowerCase()} withdrawal:`, swp.amount);
+  if(newAmt===null) return;
+  const amt = +newAmt;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+
+  const holdings = getNW().holdings;
+  const list = holdings.map((h,i)=>`${i+1}. ${h.name} (${ASSET_CLASS_LABELS[h.assetClass]||h.assetClass})`).join('\n');
+  const srcIndex = holdings.findIndex(h=>h.id===swp.sourceHoldingId);
+  const srcRaw = holdings.length===0 ? null : prompt(`Withdraw from which holding? Enter its number:\n\n${list}`, srcIndex>=0 ? String(srcIndex+1) : '1');
+  if(srcRaw===null) return;
+  const srcNum = parseInt(srcRaw, 10);
+  const newSourceHoldingId = (!isNaN(srcNum) && srcNum>=1 && srcNum<=holdings.length) ? holdings[srcNum-1].id : swp.sourceHoldingId;
+
+  const destIndex = holdings.findIndex(h=>h.id===swp.destHoldingId);
+  const destRaw = holdings.length===0 ? null : prompt(`Invest into which holding (optional)? Enter its number, or 0 for none:\n\n0. — none, just withdraw —\n${list}`, destIndex>=0 ? String(destIndex+2) : '0');
+  let newDestHoldingId = swp.destHoldingId;
+  if(destRaw!==null){
+    const destNum = parseInt(destRaw, 10);
+    newDestHoldingId = (!isNaN(destNum) && destNum>=1 && destNum<=holdings.length) ? holdings[destNum-1].id : null;
+  }
+  if(newSourceHoldingId===newDestHoldingId && newDestHoldingId){ alert('Source and destination can\'t be the same holding — destination link not changed.'); newDestHoldingId = swp.destHoldingId; }
+
+  swp.name = newName.trim();
+  swp.amount = amt;
+  const destChanged = newDestHoldingId !== (swp.destHoldingId||null);
+  swp.sourceHoldingId = newSourceHoldingId;
+  swp.destHoldingId = newDestHoldingId;
+  saveData();
+  if(destChanged && newDestHoldingId){
+    backfillSwpWithdrawals(swp.id);
+    return;
+  }
+  renderSwps();
+}
+
+// Posts any of this SWP's withdrawals that happened before a destination was
+// set (or before it was changed) into the new destination's invested amount —
+// mirrors the same fix built for SIPs.
+function backfillSwpWithdrawals(swpId){
+  const swp = getSwps().find(x=>x.id===swpId);
+  if(!swp || !swp.destHoldingId) return;
+  const dest = getNW().holdings.find(h=>h.id===swp.destHoldingId);
+  if(!dest) return;
+  const unposted = swp.withdrawals.filter(w=>!w.postedToDest && w.amount>0);
+  if(unposted.length===0){ renderSwps(); return; }
+  const total = unposted.reduce((s,w)=>s+w.amount,0);
+  if(!confirm(`"${swp.name}" has ${unposted.length} withdrawal(s) totaling ${fmtAmount(total)} that never reached "${dest.name}". Add them to its invested amount now?`)){
+    renderSwps();
+    return;
+  }
+  unposted.forEach(w=>{
+    postContributionToHolding(dest, w.date, w.amount, `SWP transfer: ${swp.name} (backfilled)`);
+    w.postedToDest = true;
+  });
+  saveData();
+  renderAll();
+}
+
+function editWithdrawal(swpId, withdrawalId){
+  const swp = getSwps().find(x=>x.id===swpId);
+  if(!swp) return;
+  const w = swp.withdrawals.find(x=>x.id===withdrawalId);
+  if(!w) return;
+  const amtRaw = prompt('Amount:', w.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', w.date);
+  if(dateRaw===null) return;
+  w.amount = amt;
+  w.date = dateRaw || w.date;
+  saveData();
+  renderSwps();
+}
+function deleteWithdrawal(swpId, withdrawalId){
+  const swp = getSwps().find(x=>x.id===swpId);
+  if(!swp) return;
+  if(!confirm('Delete this withdrawal entry? (This only removes it from the SWP\'s own log — it does not undo the actual withdrawal/transfer already applied to your holdings.)')) return;
+  swp.withdrawals = swp.withdrawals.filter(x=>x.id!==withdrawalId);
+  saveData();
+  renderSwps();
+}
+function deleteSwp(id){
+  const swp = getSwps().find(x=>x.id===id);
+  if(!swp) return;
+  if(!confirm(`Delete "${swp.name}" entirely, including its withdrawal history? This can't be undone (it won't undo withdrawals already applied to your holdings).`)) return;
+  markDeleted(id);
+  getNW().swps = getSwps().filter(x=>x.id!==id);
+  saveData();
+  renderSwps();
+}
+
+function buildSwpCard(swp){
+  const withdrawn = swpTotalWithdrawn(swp);
+  const isStopped = swp.status==='stopped';
+  const source = getNW().holdings.find(h=>h.id===swp.sourceHoldingId);
+  const dest = swp.destHoldingId ? getNW().holdings.find(h=>h.id===swp.destHoldingId) : null;
+  const unpostedCount = swp.destHoldingId ? swp.withdrawals.filter(w=>!w.postedToDest && w.amount>0).length : 0;
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${isStopped?'stopped':'repaid'}">${isStopped?'Stopped':'Active'}</span>
+      <span class="h-name">${escapeHtml(swp.name)}</span>
+      <span class="h-meta">${escapeHtml(source?source.name:'— missing holding —')}${dest?' → '+escapeHtml(dest.name):''}</span>
     </div>
-    <div class="form-col" style="border-right:none;">
-      <div class="nw-subhead">Income categories</div>
-      <div id="manageIncomeCategories"></div>
+    ${unpostedCount>0?`<div class="h-note" style="color:var(--brick);">⚠ ${unpostedCount} withdrawal(s) haven't reached "${escapeHtml(dest.name)}" yet — see Backfill below.</div>`:''}
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Amount / ${swpFrequencyLabel(swp)}</span>${fmtAmount(swp.amount)}</div>
+      <div class="h-figure"><span class="lbl">Started</span>${swp.startDate}</div>
+      <div class="h-figure"><span class="lbl">Total withdrawn</span>${fmtAmount(withdrawn)}</div>
+      <div class="h-figure"><span class="lbl">Withdrawals</span>${swp.withdrawals.length}</div>
+      ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${swp.nextDueDate}</div>`:''}
     </div>
-  </div>
-  </div>
-
-  <!-- Data management -->
-  <div class="section-head"><h2>Your data</h2></div>
-  <p class="section-desc">Everything here is stored only in this browser. Back it up regularly, especially before clearing your browser data or switching devices.</p>
-
-  <div class="drive-box">
-    <!--
-      Google Drive setup steps (kept here for reference; the Client ID itself
-      lives in tracker.js as GOOGLE_CLIENT_ID — nothing to paste in here):
-
-      1. Go to https://console.cloud.google.com/apis/credentials and create a
-         project (any name).
-      2. Enable the Google Drive API for that project (search for it under
-         "APIs & Services").
-      3. Configure the OAuth consent screen as "External", add your own Gmail
-         address (and anyone else's you want using this) as a test user, and
-         keep it in "Testing" mode — no Google review needed for personal use.
-         This test-user list is what actually controls who can sign in; the
-         Client ID itself is a public identifier, not a secret, per Google's
-         own documentation, so there's nothing sensitive about it appearing
-         in this file or in network requests.
-      4. Create an OAuth Client ID of type "Web application". Under
-         "Authorized JavaScript origins", add the exact URL this page is
-         hosted at (e.g. https://yourusername.github.io).
-      5. Paste the Client ID into the GOOGLE_CLIENT_ID constant near the top
-         of tracker.js. Every device just works from there — nothing to type
-         into this page on any device.
-    -->
-    <p class="section-desc" style="margin-top:0;">☁️ Google Drive backup</p>
-    <div class="drive-status" id="driveStatus">Not connected</div>
-    <div class="setup-row">
-      <button class="btn-secondary" id="connectDrive">🔗 Connect Google Drive</button>
-      <button class="btn-secondary" id="backupToDrive">⬆ Backup to Drive</button>
-      <button class="btn-secondary" id="restoreFromDrive">⬇ Restore from Drive</button>
-      <button class="btn-secondary" id="disconnectDrive">Disconnect</button>
+    <div class="h-actions">
+      ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop SWP</button>'}
+      <button data-action="edit">✎ Edit</button>
+      ${unpostedCount>0?'<button class="buy" data-action="backfill">⏪ Backfill '+unpostedCount+' withdrawal(s)</button>':''}
+      <button data-action="log">☰ Withdrawals</button>
+      <button data-action="del">× Delete</button>
     </div>
-  </div>
+    <div class="h-log" id="swplog-${swp.id}" style="display:none;"></div>
+  `;
+  const stopBtn = card.querySelector('[data-action=stop]');
+  if(stopBtn) stopBtn.addEventListener('click', ()=>stopSwp(swp.id));
+  const resumeBtn = card.querySelector('[data-action=resume]');
+  if(resumeBtn) resumeBtn.addEventListener('click', ()=>resumeSwp(swp.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editSwpInfo(swp.id));
+  const backfillBtn = card.querySelector('[data-action=backfill]');
+  if(backfillBtn) backfillBtn.addEventListener('click', ()=>backfillSwpWithdrawals(swp.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('swplog-'+swp.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteSwp(swp.id));
 
-  <div class="data-actions">
-    <button class="btn-secondary" id="exportJson">⬇ Export backup (.json)</button>
-    <button class="btn-secondary" id="exportCsv">⬇ Export as CSV</button>
-    <label class="btn-secondary" style="cursor:pointer;">⬆ Import backup
-      <input type="file" id="importFile" accept=".json" style="display:none;">
-    </label>
-    <button class="btn-secondary danger" id="clearAll">🗑 Clear all data</button>
-  </div>
+  const logEl = card.querySelector('.h-log');
+  if(swp.withdrawals.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No withdrawals logged yet.</span>';
+  }
+  swp.withdrawals.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(w=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    const shortfallNote = w.shortfall ? ' <span class="dup-badge" title="Not enough balance in the source holding to withdraw the full amount">⚠ partial/shortfall</span>' : '';
+    const destNote = swp.destHoldingId ? (w.postedToDest ? ' → invested' : ' → not yet transferred') : '';
+    row.innerHTML = `<span>Withdrew ${fmtAmount(w.amount)} on ${w.date}${destNote}${shortfallNote}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editWithdrawal(swp.id, w.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteWithdrawal(swp.id, w.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  return card;
+}
 
-</main>
+function renderSwpsList(){
+  const wrap = document.getElementById('swpList');
+  const swps = getSwps();
+  if(swps.length===0){
+    wrap.innerHTML = '<div class="empty-state">No SWPs logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  swps.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(swp=>wrap.appendChild(buildSwpCard(swp)));
+}
+function renderSwpsSummary(){
+  const swps = getSwps();
+  const active = swps.filter(s=>s.status==='active');
+  document.getElementById('swpActiveCount').textContent = active.length;
+  document.getElementById('swpMonthlyTotal').textContent = fmtAmount(active.reduce((s,x)=>s+swpMonthlyEquivalent(x),0));
+  document.getElementById('swpTotalWithdrawn').textContent = fmtAmount(swps.reduce((s,x)=>s+swpTotalWithdrawn(x),0));
+}
+function renderSwps(){
+  syncSwpWithdrawals();
+  populateSwpHoldingSelects();
+  renderSwpsList();
+  renderSwpsSummary();
+  renderNetWorth(); // a SWP sync may have just withdrawn/invested — keep holdings in sync
+}
 
-<footer>
-  <div class="wrap">
-    Built as a static page — your transactions are stored locally in this browser only and are never sent anywhere.
-    <div style="margin-top:10px;">&copy; 2026 Durga Prasad Khatua. All rights reserved.</div>
-  </div>
-</footer>
+// ---------- Collapsible sections (Lending / SIPs / Insurance) ----------
+// Remembered for the browser session (sessionStorage) so collapsing a
+// section you don't use stays collapsed as you keep using the tracker,
+// without permanently hiding it forever across visits.
+function setupCollapsibleSection(headId, arrowId, bodyId, storageKey){
+  const head = document.getElementById(headId);
+  const arrow = document.getElementById(arrowId);
+  const body = document.getElementById(bodyId);
+  const collapsed = sessionStorage.getItem(storageKey) === '1';
+  body.style.display = collapsed ? 'none' : '';
+  arrow.textContent = collapsed ? '▸' : '▾';
+  head.addEventListener('click', ()=>{
+    const nowCollapsed = body.style.display !== 'none';
+    body.style.display = nowCollapsed ? 'none' : '';
+    arrow.textContent = nowCollapsed ? '▸' : '▾';
+    sessionStorage.setItem(storageKey, nowCollapsed ? '1' : '0');
+  });
+}
+setupCollapsibleSection('lendingSectionHead','lendingArrow','lendingSectionBody','spendingTracker.collapsed.lending');
+setupCollapsibleSection('remitSectionHead','remitArrow','remitSectionBody','spendingTracker.collapsed.remit');
+setupCollapsibleSection('manageCatSectionHead','manageCatArrow','manageCatSectionBody','spendingTracker.collapsed.manageCat');
+setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
+setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
+setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
+setupCollapsibleSection('swpSectionHead','swpArrow','swpSectionBody','spendingTracker.collapsed.swp');
+setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
 
-<script src="tracker.js"></script>
+function setCurrency(currency){
+  currentCurrency = currency;
+  localStorage.setItem(CURRENCY_KEY, currency);
+  document.getElementById('currencyUSA').classList.toggle('active', currency==='USD');
+  document.getElementById('currencyIndia').classList.toggle('active', currency==='INR');
+  document.getElementById('txAmountCurrency').textContent = currency==='USD' ? '$' : '₹';
+  renderAll();
+}
+document.getElementById('currencyUSA').addEventListener('click', ()=>setCurrency('USD'));
+document.getElementById('currencyIndia').addEventListener('click', ()=>setCurrency('INR'));
 
-</body>
-</html>
+function renderAll(){
+  populateMonthFilter();
+  populateCategoryFilter();
+  populateTagFilter();
+  renderCategoryManagement();
+  syncRecurringExpenses(); // before the transaction-dependent renders below, so a fresh auto-logged expense shows up right away
+  renderSummary();
+  renderList();
+  renderBudget();
+  renderCategoryChart();
+  renderTrendChart();
+  renderYearlyStats();
+  populateMonthlyCategoryYearFilter();
+  renderMonthlyCategoryTable();
+  renderTagBreakdown();
+  syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
+  syncSwpWithdrawals(); // same reasoning — a SWP-driven withdrawal/transfer should show up immediately too
+  renderNetWorth();
+  renderLending();
+  renderRemit();
+  renderSips();
+  renderInsurance();
+  renderRecurring();
+  renderSwps();
+  renderNotifications();
+}
+
+// ---------- Data export / import ----------
+function downloadBlob(filename, content, mime){
+  const blob = new Blob([content], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+// When another device deletes something and its tombstone reaches us via
+// import/restore, this both remembers that deletion locally (so we never
+// re-add it ourselves later) and removes it here right now if it's still
+// sitting in our own local data — makes deletions travel both directions.
+function applyIncomingTombstones(incomingDeletedIds){
+  if(!Array.isArray(incomingDeletedIds) || incomingDeletedIds.length===0) return;
+  incomingDeletedIds.forEach(id=>deletedIds.add(id));
+  transactions = transactions.filter(t=>!isDeleted(t.id));
+  ['INR','USD'].forEach(cur=>{
+    const bucket = netWorthData[cur];
+    bucket.holdings = bucket.holdings.filter(h=>!isDeleted(h.id));
+    bucket.lending = bucket.lending.filter(l=>!isDeleted(l.id));
+    bucket.sips = bucket.sips.filter(s=>!isDeleted(s.id));
+    bucket.insurance = bucket.insurance.filter(i=>!isDeleted(i.id));
+    bucket.recurringExpenses = bucket.recurringExpenses.filter(r=>!isDeleted(r.id));
+  });
+}
+
+// Merges incoming records into a local array by ID. Previously this only
+// ever added brand-new records and silently ignored anything whose ID
+// already existed locally — which meant an *edit* made on one device would
+// never show up on another, only new entries would. When preferIncoming is
+// true (the backup being merged in is newer than what this device last saw),
+// an existing local record gets overwritten with the incoming version too.
+function mergeArrayById(localArr, incomingArr, preferIncoming){
+  if(!Array.isArray(incomingArr)) return { added:0, updated:0 };
+  const localById = new Map(localArr.map(item=>[item.id, item]));
+  let added=0, updated=0;
+  incomingArr.forEach(incomingItem=>{
+    if(!incomingItem.id || isDeleted(incomingItem.id)) return;
+    const localItem = localById.get(incomingItem.id);
+    if(!localItem){
+      localArr.push(incomingItem);
+      added++;
+    } else if(preferIncoming){
+      Object.assign(localItem, incomingItem);
+      updated++;
+    }
+  });
+  return { added, updated };
+}
+
+function mergeNetWorthFromBackup(incomingNW, preferIncoming){
+  if(!incomingNW) return 0;
+  let addedHoldings = 0;
+  ['INR','USD'].forEach(cur=>{
+    const incomingBucket = incomingNW[cur];
+    if(!incomingBucket) return;
+    const localBucket = netWorthData[cur];
+    if(Array.isArray(incomingBucket.holdings)){
+      const migrated = incomingBucket.holdings.map(migrateHolding);
+      const result = mergeArrayById(localBucket.holdings, migrated, preferIncoming);
+      addedHoldings += result.added;
+    }
+    // Old-format backups may still have flatAssets (Real Estate/Vehicles/Other
+    // as flat numbers) — convert any into holdings so nothing is lost.
+    if(incomingBucket.flatAssets){
+      const flat = incomingBucket.flatAssets;
+      const today = todayLocalISO();
+      const map = { realEstate:['realestate','Real estate'], vehicles:['vehicle','Vehicles'], otherAsset:['other','Other assets'] };
+      Object.keys(map).forEach(key=>{
+        if(flat[key]>0){
+          const [assetClass, name] = map[key];
+          localBucket.holdings.push({ id: nwUid(), assetClass, name, currentPrice: flat[key], lots:[{id:nwUid(), date:today, quantity:1, price:flat[key]}], sells:[] });
+          addedHoldings++;
+        }
+      });
+    }
+    if(incomingBucket.liabilities){
+      if(preferIncoming) Object.assign(localBucket.liabilities, incomingBucket.liabilities);
+      else Object.keys(incomingBucket.liabilities).forEach(k=>{ if(localBucket.liabilities[k]===undefined) localBucket.liabilities[k]=incomingBucket.liabilities[k]; });
+    }
+    if(Array.isArray(incomingBucket.lending)){
+      if(!localBucket.lending) localBucket.lending = [];
+      mergeArrayById(localBucket.lending, incomingBucket.lending.map(migrateLending), preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.sips)){
+      if(!localBucket.sips) localBucket.sips = [];
+      mergeArrayById(localBucket.sips, incomingBucket.sips, preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.insurance)){
+      if(!localBucket.insurance) localBucket.insurance = [];
+      mergeArrayById(localBucket.insurance, incomingBucket.insurance, preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.recurringExpenses)){
+      if(!localBucket.recurringExpenses) localBucket.recurringExpenses = [];
+      mergeArrayById(localBucket.recurringExpenses, incomingBucket.recurringExpenses, preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.swps)){
+      if(!localBucket.swps) localBucket.swps = [];
+      mergeArrayById(localBucket.swps, incomingBucket.swps, preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.wealthSnapshots)){
+      if(!localBucket.wealthSnapshots) localBucket.wealthSnapshots = [];
+      const localByMonth = new Map(localBucket.wealthSnapshots.map(s=>[s.month, s]));
+      incomingBucket.wealthSnapshots.forEach(s=>{
+        const existing = localByMonth.get(s.month);
+        if(!existing) localBucket.wealthSnapshots.push(s);
+        else if(preferIncoming) Object.assign(existing, s);
+      });
+    }
+  });
+  return addedHoldings;
+}
+
+document.getElementById('exportJson').addEventListener('click', ()=>{
+  const payload = { transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], remittances, exportedAt: new Date().toISOString() };
+  downloadBlob('spending-tracker-backup-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(payload, null, 2), 'application/json');
+  localStorage.setItem('spendingTracker.lastExport', Date.now().toString());
+  document.getElementById('backupReminder').style.display = 'none';
+});
+document.getElementById('exportCsv').addEventListener('click', ()=>{
+  const header = 'Date,Type,Category,Description,Amount,Currency\n';
+  const rows = transactions.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(t=>
+    [t.date, t.type, t.category, '"'+(t.description||'').replace(/"/g,'""')+'"', t.amount, t.currency||'INR'].join(',')
+  ).join('\n');
+  downloadBlob('spending-tracker-'+new Date().toISOString().slice(0,10)+'.csv', header+rows, 'text/csv');
+});
+document.getElementById('importFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const data = JSON.parse(reader.result);
+      const incoming = Array.isArray(data.transactions) ? data.transactions : [];
+      const nwCount = data.netWorthData ? Object.values(data.netWorthData).reduce((s,b)=>s+(Array.isArray(b.holdings)?b.holdings.length:0),0) : 0;
+      const existingTxIds = new Set(transactions.map(t=>t.id));
+      const overlapCount = incoming.filter(t=>t.id && existingTxIds.has(t.id)).length;
+      if(!confirm(`Import ${incoming.length} transaction(s)${nwCount?` and up to ${nwCount} holding(s)`:''}?`)) return;
+      let overwriteExisting = false;
+      if(overlapCount>0){
+        overwriteExisting = confirm(`${overlapCount} record(s) in this file share an ID with something already here (likely the same item, possibly edited since). Click OK to overwrite those with the imported version, or Cancel to only add new records and leave existing ones untouched.`);
+      }
+      applyIncomingTombstones(data.deletedIds);
+      incoming.forEach(t=>{ if(!t.currency) t.currency='INR'; });
+      mergeArrayById(transactions, incoming, overwriteExisting);
+      if(data.categories){
+        ['income','expense'].forEach(type=>{
+          if(Array.isArray(data.categories[type])){
+            data.categories[type].forEach(c=>{ if(!categories[type].includes(c)) categories[type].push(c); });
+          }
+        });
+      }
+      mergeNetWorthFromBackup(data.netWorthData, overwriteExisting);
+      if(data.budgets){
+        if(overwriteExisting){
+          Object.assign(budgets.INR, data.budgets.INR||{});
+          Object.assign(budgets.USD, data.budgets.USD||{});
+        } else {
+          Object.keys(data.budgets.INR||{}).forEach(k=>{ if(budgets.INR[k]===undefined) budgets.INR[k]=data.budgets.INR[k]; });
+          Object.keys(data.budgets.USD||{}).forEach(k=>{ if(budgets.USD[k]===undefined) budgets.USD[k]=data.budgets.USD[k]; });
+        }
+      }
+      mergeArrayById(remittances, data.remittances, overwriteExisting);
+      saveData();
+      renderAll();
+      alert('Import complete.');
+    } catch(err){
+      alert('Could not read that file — make sure it\'s a backup exported from this tracker.');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+document.getElementById('clearAll').addEventListener('click', ()=>{
+  if(!confirm('Delete ALL transactions on this device? This cannot be undone. Consider exporting a backup first.')) return;
+  if(!confirm('Really sure? This is permanent.')) return;
+  transactions = [];
+  saveData();
+  renderAll();
+});
+
+// ---------- Google Drive backup (optional, opt-in only — nothing here loads until you click Connect) ----------
+const DRIVE_FILE_NAME = 'spending-tracker-backup.json';
+let gsiClient = null;
+let driveAccessToken = null;
+let driveTokenExpiry = 0;
+
+// The OAuth Client ID — set once here, works on every device automatically.
+// This is a public identifier (Google's own docs call it non-secret), so
+// there's nothing sensitive about it living in this file. Who can actually
+// sign in is controlled entirely by the "Test users" list on the OAuth
+// consent screen in Google Cloud Console — add a Gmail address there to let
+// that person sync to their own Drive using this same Client ID.
+const GOOGLE_CLIENT_ID = '383914037063-7j0fpcpltj1dlvglhrsn27inf1h9juff.apps.googleusercontent.com';
+
+function setDriveStatus(text, connected){
+  const el = document.getElementById('driveStatus');
+  el.textContent = text;
+  el.classList.toggle('connected', !!connected);
+}
+
+function loadGsiScript(cb){
+  if(window.google && google.accounts && google.accounts.oauth2){ cb(); return; }
+  const existing = document.getElementById('gsi-script');
+  if(existing){ existing.addEventListener('load', cb, {once:true}); return; }
+  const s = document.createElement('script');
+  s.id = 'gsi-script';
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.onload = cb;
+  s.onerror = () => { setDriveStatus('Could not load Google Sign-In — check your connection.'); };
+  document.head.appendChild(s);
+}
+
+function initGsi(){
+  if(!window.google) return false;
+  gsiClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/drive.file openid email',
+    callback: () => {} // overwritten per-call below
+  });
+  return true;
+}
+
+function requestDriveToken(onGranted){
+  // Fast path: script + client already prepared (the common case) — call
+  // requestAccessToken() synchronously within this click so the browser
+  // still treats the popup as user-initiated and doesn't silently block it.
+  if(gsiClient){
+    let settled = false;
+    // If the popup was silently blocked (common on mobile browsers with strict
+    // popup settings), Google's callback never fires at all — with no timeout,
+    // the UI would just sit there forever with zero indication anything went
+    // wrong. This makes that failure visible instead of silent.
+    const timeoutId = setTimeout(()=>{
+      if(settled) return;
+      settled = true;
+      setDriveStatus('No popup appeared — your browser likely blocked it. Check your browser\'s site settings and allow popups for this page, then try again.');
+    }, 7000);
+    gsiClient.callback = (resp)=>{
+      if(settled) return; // timeout already fired and reported the failure
+      settled = true;
+      clearTimeout(timeoutId);
+      if(resp.error){ setDriveStatus('Connection failed: '+resp.error); return; }
+      driveAccessToken = resp.access_token;
+      driveTokenExpiry = Date.now() + (resp.expires_in*1000);
+      fetchDriveUserInfo();
+      pullFromDrive(true); // auto-pull whatever's already in Drive from other devices
+      if(onGranted) onGranted();
+    };
+    gsiClient.requestAccessToken();
+    return;
+  }
+  // Slow path: first time, script/client not ready yet. Prepare them now,
+  // but the popup may get blocked this one time since it's no longer a
+  // same-tick user gesture — tell the person to click Connect once more.
+  setDriveStatus('Preparing Google Sign-In — click Connect Google Drive once more…');
+  loadGsiScript(()=>{
+    if(!initGsi()){ setDriveStatus('Could not start Google Sign-In.'); return; }
+    setDriveStatus('Ready — click Connect Google Drive again.');
+  });
+}
+
+async function fetchDriveUserInfo(){
+  try{
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers:{ Authorization:'Bearer '+driveAccessToken } });
+    const info = await res.json();
+    setDriveStatus('Connected as '+(info.email||'Google account'), true);
+  } catch(e){
+    setDriveStatus('Connected', true);
+  }
+}
+
+function ensureToken(cb){
+  if(driveAccessToken && Date.now() < driveTokenExpiry-5000){ cb(); return; }
+  requestDriveToken(cb);
+}
+
+document.getElementById('connectDrive').addEventListener('click', ()=> requestDriveToken());
+
+// Preload the sign-in script right away so the very first Connect click
+// this session still works on the first try.
+loadGsiScript(()=>{ initGsi(); setDriveStatus('Ready. Click Connect Google Drive.'); });
+
+async function findDriveFile(){
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime)`, {
+    headers:{ Authorization:'Bearer '+driveAccessToken }
+  });
+  if(!res.ok){
+    let detail = 'HTTP '+res.status;
+    try{ const errJson = await res.json(); if(errJson.error && errJson.error.message) detail = errJson.error.message; } catch(e){}
+    throw new Error(detail);
+  }
+  const data = await res.json();
+  return (data.files && data.files[0]) || null;
+}
+
+let driveSyncing = false;
+async function pushToDrive(silent){
+  try{
+    driveSyncing = true;
+    if(silent) setDriveStatus('Syncing to Drive…', true);
+    const exportedAt = new Date().toISOString();
+    const payload = JSON.stringify({ transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], remittances, exportedAt }, null, 2);
+    const existing = await findDriveFile();
+    const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
+    const boundary = 'ledgerboundary' + Date.now();
+    const body =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${payload}\r\n--${boundary}--`;
+    const url = existing
+      ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart`
+      : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    const res = await fetch(url, {
+      method: existing ? 'PATCH' : 'POST',
+      headers:{ Authorization:'Bearer '+driveAccessToken, 'Content-Type':`multipart/related; boundary=${boundary}` },
+      body
+    });
+    driveSyncing = false;
+    if(res.ok){
+      setLastSyncTimestamp(exportedAt); // this device is now caught up to the version it just pushed
+      localStorage.setItem('spendingTracker.lastExport', Date.now().toString());
+      document.getElementById('backupReminder').style.display = 'none';
+      if(silent) fetchDriveUserInfo(); else alert('Backed up to Google Drive.');
+      return true;
+    } else {
+      let detail = 'HTTP '+res.status;
+      try{ const errJson = await res.json(); if(errJson.error && errJson.error.message) detail = errJson.error.message; } catch(e){}
+      if(!silent) alert('Backup failed: '+detail);
+      else setDriveStatus('Backup failed: '+detail);
+      return false;
+    }
+  } catch(e){
+    driveSyncing = false;
+    const msg = 'Backup failed: '+(e && e.message ? e.message : 'unknown error');
+    if(!silent) alert(msg); else setDriveStatus(msg);
+    return false;
+  }
+}
+
+async function pullFromDrive(silent){
+  try{
+    const file = await findDriveFile();
+    if(!file){ if(!silent) alert('No backup found in Drive yet — use Backup to Drive first.'); return; }
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+      headers:{ Authorization:'Bearer '+driveAccessToken }
+    });
+    if(!res.ok){
+      let detail = 'HTTP '+res.status;
+      try{ const errJson = await res.json(); if(errJson.error && errJson.error.message) detail = errJson.error.message; } catch(e){}
+      if(!silent) alert('Restore failed: '+detail); else setDriveStatus('Restore failed: '+detail);
+      return;
+    }
+    const data = await res.json();
+    applyIncomingTombstones(data.deletedIds);
+    // If this backup is newer than what we last synced, overlapping records
+    // should be treated as edits (overwrite), not just skipped as duplicates —
+    // this is what makes an edit made on another device actually show up here.
+    const preferIncoming = !!data.exportedAt && data.exportedAt > getLastSyncTimestamp();
+    const incoming = Array.isArray(data.transactions) ? data.transactions : [];
+    incoming.forEach(t=>{ if(!t.currency) t.currency='INR'; });
+    const txResult = mergeArrayById(transactions, incoming, preferIncoming);
+    const added = txResult.added;
+    if(data.categories){
+      ['income','expense'].forEach(type=>{
+        if(Array.isArray(data.categories[type])) data.categories[type].forEach(c=>{ if(!categories[type].includes(c)) categories[type].push(c); });
+      });
+    }
+    const addedHoldings = mergeNetWorthFromBackup(data.netWorthData, preferIncoming);
+    if(data.budgets){
+      if(preferIncoming){
+        Object.assign(budgets.INR, data.budgets.INR||{});
+        Object.assign(budgets.USD, data.budgets.USD||{});
+      } else {
+        Object.keys(data.budgets.INR||{}).forEach(k=>{ if(budgets.INR[k]===undefined) budgets.INR[k]=data.budgets.INR[k]; });
+        Object.keys(data.budgets.USD||{}).forEach(k=>{ if(budgets.USD[k]===undefined) budgets.USD[k]=data.budgets.USD[k]; });
+      }
+    }
+    const remitResult = mergeArrayById(remittances, data.remittances, preferIncoming);
+    const addedRemit = remitResult.added;
+    if(data.exportedAt) setLastSyncTimestamp(data.exportedAt);
+    if(added>0 || addedHoldings>0 || addedRemit>0 || txResult.updated>0 || remitResult.updated>0){
+      saveDataLocalOnly(); // don't re-trigger a push for data we just pulled
+      renderAll();
+    }
+    if(!silent){
+      const updatedTotal = txResult.updated + remitResult.updated;
+      const parts = [];
+      if(added>0||addedHoldings>0||addedRemit>0) parts.push(`${added} new transaction(s), ${addedHoldings} holding(s), ${addedRemit} remittance(s)`);
+      if(updatedTotal>0) parts.push(`${updatedTotal} record(s) updated with newer edits`);
+      alert(parts.length ? `Restored from Drive: ${parts.join('; ')}.` : 'Already up to date with Drive.');
+    }
+    else fetchDriveUserInfo();
+  } catch(e){
+    const msg = 'Restore failed: '+(e && e.message ? e.message : 'unknown error');
+    if(!silent) alert(msg); else setDriveStatus(msg);
+  }
+}
+
+document.getElementById('backupToDrive').addEventListener('click', ()=>{ ensureToken(()=>pushToDrive(false)); });
+document.getElementById('restoreFromDrive').addEventListener('click', ()=>{ ensureToken(()=>pullFromDrive(false)); });
+
+document.getElementById('disconnectDrive').addEventListener('click', ()=>{
+  if(driveAccessToken && window.google && google.accounts){
+    google.accounts.oauth2.revoke(driveAccessToken, ()=>{});
+  }
+  driveAccessToken = null;
+  driveTokenExpiry = 0;
+  setDriveStatus('Not connected');
+});
+
+// While connected this session, check Drive for changes made on another
+// device whenever you come back to this tab (e.g. switching from your phone
+// back to your laptop). This isn't constant background polling — only when
+// the tab regains focus — to keep it light and battery-friendly.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && driveAccessToken && Date.now() < driveTokenExpiry-5000){
+    pullFromDrive(true);
+  }
+});
+
+// (Client ID preload handled above, right after the Connect button wiring.)
+
+// ---------- Init ----------
+loadData();
+document.getElementById('currencyUSA').classList.toggle('active', currentCurrency==='USD');
+document.getElementById('currencyIndia').classList.toggle('active', currentCurrency==='INR');
+document.getElementById('txAmountCurrency').textContent = currentCurrency==='USD' ? '$' : '₹';
+resetForm();
+document.getElementById('holdingDate').value = todayLocalISO();
+document.getElementById('lendDate').value = todayLocalISO();
+document.getElementById('sipStartDate').value = todayLocalISO();
+document.getElementById('insBoughtDate').value = todayLocalISO();
+document.getElementById('recurStartDate').value = todayLocalISO();
+document.getElementById('swpStartDate').value = todayLocalISO();
+document.getElementById('remitDate').value = todayLocalISO();
+renderAll();
+checkBackupReminder();
+
+function checkBackupReminder(){
+  if(transactions.length===0) return;
+  const dismissedAt = +(sessionStorage.getItem('spendingTracker.reminderDismissed')||0);
+  if(dismissedAt) return; // don't nag again this session
+  const lastExport = +(localStorage.getItem('spendingTracker.lastExport')||0);
+  const daysSince = lastExport ? (Date.now()-lastExport)/(1000*60*60*24) : Infinity;
+  if(daysSince > 14){
+    document.getElementById('backupReminder').style.display = '';
+  }
+}
+document.getElementById('reminderExportBtn').addEventListener('click', ()=> document.getElementById('exportJson').click());
+document.getElementById('reminderDismiss').addEventListener('click', ()=>{
+  document.getElementById('backupReminder').style.display = 'none';
+  sessionStorage.setItem('spendingTracker.reminderDismissed', Date.now().toString());
+});
+
+// ---------- Offline support (service worker) ----------
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{ /* fails silently if unsupported */ });
+  });
+}
