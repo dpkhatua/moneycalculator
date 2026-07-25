@@ -262,6 +262,48 @@ document.getElementById('txCategory').addEventListener('change', (e)=>{
   }
 });
 
+// Category removal only affects new transactions/budgets — anything already
+// logged keeps its category label untouched, so past data is never silently
+// changed or orphaned.
+function removeCategory(type, name){
+  const usageCount = transactions.filter(t=>t.type===type && t.category===name).length;
+  const hasBudget = type==='expense' && (budgets.INR[name]!==undefined || budgets.USD[name]!==undefined);
+  let msg = `Remove "${name}" from your ${type} categories?`;
+  if(usageCount>0) msg += `\n\n${usageCount} existing transaction(s) use this category — they'll keep it as-is; you just won't be able to pick it for new ones.`;
+  if(hasBudget) msg += `\n\nIts budget (if set, in either currency) will be removed too.`;
+  if(!confirm(msg)) return;
+
+  categories[type] = categories[type].filter(c=>c!==name);
+  if(hasBudget){
+    delete budgets.INR[name];
+    delete budgets.USD[name];
+  }
+  saveData();
+  renderCategoryManagement();
+  populateCategorySelect();
+  renderBudget();
+}
+
+function renderCategoryManagement(){
+  ['expense','income'].forEach(type=>{
+    const wrap = document.getElementById(type==='expense' ? 'manageExpenseCategories' : 'manageIncomeCategories');
+    if(categories[type].length===0){ wrap.innerHTML = '<div class="empty-state">None yet.</div>'; return; }
+    wrap.innerHTML = '';
+    categories[type].slice().sort().forEach(name=>{
+      const count = transactions.filter(t=>t.type===type && t.category===name).length;
+      const row = document.createElement('div');
+      row.className = 'cat-chip-row';
+      row.innerHTML = `<span class="cat-chip-name">${escapeHtml(name)}</span><span class="cat-chip-count">${count>0?count+' used':''}</span>`;
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×';
+      delBtn.title = 'Remove this category';
+      delBtn.addEventListener('click', ()=>removeCategory(type, name));
+      row.appendChild(delBtn);
+      wrap.appendChild(row);
+    });
+  });
+}
+
 function setType(type){
   currentType = type;
   document.getElementById('typeExpenseBtn').classList.toggle('active', type==='expense');
@@ -3264,6 +3306,7 @@ function renderAll(){
   populateMonthFilter();
   populateCategoryFilter();
   populateTagFilter();
+  renderCategoryManagement();
   syncRecurringExpenses(); // before the transaction-dependent renders below, so a fresh auto-logged expense shows up right away
   renderSummary();
   renderList();
