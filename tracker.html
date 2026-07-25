@@ -663,6 +663,65 @@
   <div class="holding-list" id="lendingList" style="margin-bottom:44px;"></div>
   </div>
 
+  <!-- Remittances -->
+  <div class="section-head collapsible" id="remitSectionHead"><h2><span class="section-arrow" id="remitArrow">▾</span>Remittances (USA → India)</h2></div>
+  <div id="remitSectionBody">
+  <p class="section-desc">Money sent from the US to India — to your own account, your parents, your sisters, wherever. Tracked in both currencies at once, by recipient/account and by year. Not included in net worth (it's a transfer, not new wealth) and doesn't follow the 🇺🇸/🇮🇳 toggle above — always shown together.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a transfer</div>
+      <div class="holding-form">
+        <div>
+          <label>Date</label>
+          <input type="date" id="remitDate">
+        </div>
+        <div>
+          <label>Account / Recipient</label>
+          <input type="text" id="remitRecipient" placeholder="e.g. My Account, Parents, Sister" maxlength="60" list="remitRecipientOptions">
+          <datalist id="remitRecipientOptions"></datalist>
+        </div>
+        <div>
+          <label>USD sent</label>
+          <input type="number" id="remitUsd" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>INR received</label>
+          <input type="number" id="remitInr" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Note <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <input type="text" id="remitNote" placeholder="optional" maxlength="140">
+        </div>
+        <div>
+          <button class="btn-primary" id="addRemit" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-bar" style="margin-bottom:16px;">
+    <select id="remitRecipientFilter"><option value="">All accounts/recipients</option></select>
+    <select id="remitYearFilter"><option value="__all__">All years</option></select>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Total USD sent</div><div class="val" id="remitTotalUsd">$0</div></div>
+    <div class="t"><div class="lbl">Total INR received</div><div class="val" id="remitTotalInr">₹0</div></div>
+    <div class="t"><div class="lbl">Average rate</div><div class="val" id="remitAvgRate">—</div></div>
+    <div class="t"><div class="lbl">Transfers</div><div class="val" id="remitCount">0</div></div>
+  </div>
+
+  <div class="nw-subhead">By account / recipient</div>
+  <div id="remitRecipientTable" style="margin-bottom:28px;"></div>
+
+  <div class="nw-subhead">By year</div>
+  <div id="remitYearTable" style="margin-bottom:28px;"></div>
+
+  <div class="nw-subhead">All transfers</div>
+  <div id="remitList" style="margin-bottom:44px;"></div>
+  </div>
+
   <!-- SIPs -->
   <div class="section-head collapsible" id="sipsSectionHead"><h2><span class="section-arrow" id="sipsArrow">▾</span>SIPs</h2></div>
   <div id="sipsSectionBody">
