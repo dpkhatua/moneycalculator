@@ -172,6 +172,16 @@
     padding:2px 7px;border:1px solid var(--brick);color:var(--brick);white-space:nowrap;
   }
   .notify-row .notify-when.soon{border-color:var(--mustard);color:var(--mustard);}
+
+  .cat-chip-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--rule);font-size:13.5px;}
+  .cat-chip-row:last-child{border-bottom:none;}
+  .cat-chip-row .cat-chip-name{flex:1;color:var(--ink);}
+  .cat-chip-row .cat-chip-count{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;color:var(--ink-soft);}
+  .cat-chip-row button{
+    background:none;border:1px solid var(--rule);width:24px;height:24px;flex:0 0 auto;cursor:pointer;
+    font-size:12px;color:var(--ink-soft);line-height:1;
+  }
+  .cat-chip-row button:hover{background:var(--brick);border-color:var(--brick);color:#fff;}
   .tx-row .tx-desc{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .tx-row .tx-amt{font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-weight:600;white-space:nowrap;}
   .tx-row .tx-amt.income{color:var(--green-deep);}
@@ -940,6 +950,20 @@
   </div>
 
   <div class="holding-list" id="swpList" style="margin-bottom:44px;"></div>
+  </div>
+
+  <!-- Manage Categories -->
+  <div class="section-head"><h2>Manage categories</h2></div>
+  <p class="section-desc">Remove ones you don't need. This only affects new transactions — anything already logged keeps its category label, and any budget you'd set for it is removed along with it.</p>
+  <div class="tracker-grid" style="margin-bottom:44px;">
+    <div class="form-col">
+      <div class="nw-subhead">Expense categories</div>
+      <div id="manageExpenseCategories"></div>
+    </div>
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Income categories</div>
+      <div id="manageIncomeCategories"></div>
+    </div>
   </div>
 
   <!-- Data management -->
