@@ -1987,9 +1987,23 @@ function deleteRemit(id){
   renderRemit();
 }
 
+let remitListExpanded = false;
+document.getElementById('remitListToggle').addEventListener('click', ()=>{
+  remitListExpanded = !remitListExpanded;
+  renderRemitList();
+});
+
 function renderRemitList(){
   const wrap = document.getElementById('remitList');
+  const arrow = document.getElementById('remitListArrow');
+  const meta = document.getElementById('remitListMeta');
   const filtered = getFilteredRemittances().slice().sort((a,b)=>b.date.localeCompare(a.date));
+
+  arrow.textContent = remitListExpanded ? '▾' : '▸';
+  meta.textContent = `${filtered.length} transfer${filtered.length===1?'':'s'}`;
+  wrap.style.display = remitListExpanded ? '' : 'none';
+  if(!remitListExpanded) return;
+
   if(filtered.length===0){
     wrap.innerHTML = '<div class="empty-state">No transfers logged yet for this selection.</div>';
     return;
@@ -2053,6 +2067,31 @@ function renderRemitYearTable(){
   wrap.innerHTML = html;
 }
 
+function renderRemitAccountYearTable(){
+  const wrap = document.getElementById('remitAccountYearTable');
+  const filtered = getFilteredRemittances();
+  if(filtered.length===0){ wrap.innerHTML = ''; return; }
+  const recipients = [...new Set(filtered.map(r=>r.recipient))].sort();
+  const years = [...new Set(filtered.map(r=>r.date.slice(0,4)))].sort().reverse();
+
+  let html = `<table class="cat-table"><thead><tr><th>Year</th>${recipients.map(r=>`<th style="text-align:right;">${escapeHtml(r)}</th>`).join('')}<th style="text-align:right;">Total</th></tr></thead><tbody>`;
+  years.forEach(y=>{
+    const yearTx = filtered.filter(r=>r.date.slice(0,4)===y);
+    let yearUsdTotal = 0, yearInrTotal = 0;
+    const cells = recipients.map(name=>{
+      const matches = yearTx.filter(r=>r.recipient===name);
+      if(matches.length===0) return '<td class="num">—</td>';
+      const usd = matches.reduce((s,r)=>s+r.usdAmount,0);
+      const inr = matches.reduce((s,r)=>s+r.inrAmount,0);
+      yearUsdTotal += usd; yearInrTotal += inr;
+      return `<td class="num">$${usd.toLocaleString('en-US')}<br>₹${inr.toLocaleString('en-IN')}</td>`;
+    }).join('');
+    html += `<tr><td>${y}</td>${cells}<td class="num" style="font-weight:600;">$${yearUsdTotal.toLocaleString('en-US')}<br>₹${yearInrTotal.toLocaleString('en-IN')}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
 function renderRemitSummary(){
   const filtered = getFilteredRemittances();
   const totalUsd = filtered.reduce((s,r)=>s+r.usdAmount,0);
@@ -2067,6 +2106,7 @@ function renderRemitViews(){
   renderRemitList();
   renderRemitRecipientTable();
   renderRemitYearTable();
+  renderRemitAccountYearTable();
   renderRemitSummary();
 }
 function renderRemit(){
