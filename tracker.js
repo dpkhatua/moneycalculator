@@ -4,6 +4,7 @@ const CURRENCY_KEY = 'spendingTracker.currentCurrency';
 const NETWORTH_KEY = 'spendingTracker.netWorth.v1';
 const BUDGET_KEY = 'spendingTracker.budgets.v1';
 const DELETED_KEY = 'spendingTracker.deletedIds.v1';
+const REMIT_KEY = 'spendingTracker.remittances.v1';
 
 const DEFAULT_CATEGORIES = {
   expense: ['Food','Transport','Housing','Utilities','Shopping','Entertainment','Health','Education','Other'],
@@ -46,6 +47,10 @@ let budgets = { INR: {}, USD: {} }; // { category: monthlyBudgetAmount }, per cu
 let deletedIds = new Set();
 function markDeleted(id){ if(id) deletedIds.add(id); }
 function isDeleted(id){ return deletedIds.has(id); }
+// USA → India money transfers — spans both currencies at once (USD sent,
+// INR received), so unlike everything else this isn't split into per-currency
+// buckets. Not counted in net worth (it's a transfer, not new wealth).
+let remittances = [];
 let currentType = 'expense';
 let editingId = null;
 // currentCurrency is the single "which country am I looking at" lens: it decides
@@ -193,6 +198,10 @@ function loadData(){
     const rawDeleted = localStorage.getItem(DELETED_KEY);
     deletedIds = new Set(rawDeleted ? JSON.parse(rawDeleted) : []);
   } catch(e){ deletedIds = new Set(); }
+  try{
+    const rawRemit = localStorage.getItem(REMIT_KEY);
+    remittances = rawRemit ? JSON.parse(rawRemit) : [];
+  } catch(e){ remittances = []; }
   // Migration: transactions logged before multi-currency support have no
   // currency field — treat them as INR, since that was the only option then.
   let migrated = false;
@@ -206,6 +215,7 @@ function persistLocal(){
     localStorage.setItem(NETWORTH_KEY, JSON.stringify(netWorthData));
     localStorage.setItem(BUDGET_KEY, JSON.stringify(budgets));
     localStorage.setItem(DELETED_KEY, JSON.stringify([...deletedIds]));
+    localStorage.setItem(REMIT_KEY, JSON.stringify(remittances));
   } catch(e){
     alert('Could not save — your browser storage may be full or blocked (e.g. private browsing mode).');
   }
@@ -1889,6 +1899,181 @@ function renderLending(){
   renderLendingSummary();
 }
 
+// ---------- Remittances (USA -> India, spans both currencies at once) ----------
+function remitRate(r){ return r.usdAmount>0 ? r.inrAmount/r.usdAmount : 0; }
+
+function populateRemitFilters(){
+  const recipients = [...new Set(remittances.map(r=>r.recipient))].sort();
+  const recSel = document.getElementById('remitRecipientFilter');
+  const prevRec = recSel.value;
+  recSel.innerHTML = '<option value="">All accounts/recipients</option>' + recipients.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+  if(prevRec) recSel.value = prevRec;
+
+  const years = [...new Set(remittances.map(r=>r.date.slice(0,4)))].sort().reverse();
+  const yearSel = document.getElementById('remitYearFilter');
+  const prevYear = yearSel.value;
+  yearSel.innerHTML = '<option value="__all__">All years</option>' + years.map(y=>`<option value="${y}">${y}</option>`).join('');
+  if(prevYear && [...yearSel.options].some(o=>o.value===prevYear)) yearSel.value = prevYear;
+
+  const datalist = document.getElementById('remitRecipientOptions');
+  datalist.innerHTML = recipients.map(r=>`<option value="${escapeHtml(r)}">`).join('');
+}
+document.getElementById('remitRecipientFilter').addEventListener('change', renderRemitViews);
+document.getElementById('remitYearFilter').addEventListener('change', renderRemitViews);
+
+function getFilteredRemittances(){
+  const recipient = document.getElementById('remitRecipientFilter').value;
+  const year = document.getElementById('remitYearFilter').value;
+  return remittances.filter(r=>{
+    if(recipient && r.recipient!==recipient) return false;
+    if(year!=='__all__' && r.date.slice(0,4)!==year) return false;
+    return true;
+  });
+}
+
+document.getElementById('addRemit').addEventListener('click', ()=>{
+  const date = document.getElementById('remitDate').value || todayLocalISO();
+  const recipient = document.getElementById('remitRecipient').value.trim();
+  const usdAmount = +document.getElementById('remitUsd').value;
+  const inrAmount = +document.getElementById('remitInr').value;
+  const note = document.getElementById('remitNote').value.trim();
+
+  if(!recipient){ alert('Enter which account/recipient this went to.'); return; }
+  if(!usdAmount || usdAmount<=0){ alert('Enter the USD amount sent.'); return; }
+  if(!inrAmount || inrAmount<=0){ alert('Enter the INR amount received.'); return; }
+
+  remittances.push({ id: nwUid(), date, recipient, usdAmount, inrAmount, note: note||null });
+  saveData();
+  document.getElementById('remitRecipient').value = '';
+  document.getElementById('remitUsd').value = '';
+  document.getElementById('remitInr').value = '';
+  document.getElementById('remitNote').value = '';
+  document.getElementById('remitDate').value = todayLocalISO();
+  renderRemit();
+});
+
+function editRemit(id){
+  const r = remittances.find(x=>x.id===id);
+  if(!r) return;
+  const recipientRaw = prompt('Account/Recipient:', r.recipient);
+  if(recipientRaw===null) return;
+  if(!recipientRaw.trim()){ alert('Can\'t be empty.'); return; }
+  const usdRaw = prompt('USD sent:', r.usdAmount);
+  if(usdRaw===null) return;
+  const usd = +usdRaw;
+  if(!usd || usd<=0){ alert('Enter a valid USD amount.'); return; }
+  const inrRaw = prompt('INR received:', r.inrAmount);
+  if(inrRaw===null) return;
+  const inr = +inrRaw;
+  if(!inr || inr<=0){ alert('Enter a valid INR amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', r.date);
+  if(dateRaw===null) return;
+  const noteRaw = prompt('Note (optional):', r.note||'');
+  if(noteRaw===null) return;
+
+  r.recipient = recipientRaw.trim();
+  r.usdAmount = usd;
+  r.inrAmount = inr;
+  r.date = dateRaw || r.date;
+  r.note = noteRaw.trim() || null;
+  saveData();
+  renderRemit();
+}
+function deleteRemit(id){
+  if(!confirm('Delete this transfer? This can\'t be undone.')) return;
+  markDeleted(id);
+  remittances = remittances.filter(x=>x.id!==id);
+  saveData();
+  renderRemit();
+}
+
+function renderRemitList(){
+  const wrap = document.getElementById('remitList');
+  const filtered = getFilteredRemittances().slice().sort((a,b)=>b.date.localeCompare(a.date));
+  if(filtered.length===0){
+    wrap.innerHTML = '<div class="empty-state">No transfers logged yet for this selection.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  filtered.forEach(r=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span><b>${escapeHtml(r.recipient)}</b> — $${r.usdAmount.toLocaleString('en-US')} → ₹${r.inrAmount.toLocaleString('en-IN')} (rate ${remitRate(r).toFixed(2)}) on ${r.date}${r.note?' — '+escapeHtml(r.note):''}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editRemit(r.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteRemit(r.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    wrap.appendChild(row);
+  });
+}
+
+function renderRemitRecipientTable(){
+  const wrap = document.getElementById('remitRecipientTable');
+  const filtered = getFilteredRemittances();
+  if(filtered.length===0){ wrap.innerHTML = ''; return; }
+  const byRecipient = {};
+  filtered.forEach(r=>{
+    if(!byRecipient[r.recipient]) byRecipient[r.recipient] = { usd:0, inr:0, count:0 };
+    byRecipient[r.recipient].usd += r.usdAmount;
+    byRecipient[r.recipient].inr += r.inrAmount;
+    byRecipient[r.recipient].count++;
+  });
+  const recipients = Object.keys(byRecipient).sort((a,b)=>byRecipient[b].inr-byRecipient[a].inr);
+  let html = `<table class="cat-table"><thead><tr><th>Account/Recipient</th><th style="text-align:right;">USD sent</th><th style="text-align:right;">INR received</th><th style="text-align:right;">Avg rate</th><th style="text-align:right;">Transfers</th></tr></thead><tbody>`;
+  recipients.forEach(name=>{
+    const d = byRecipient[name];
+    html += `<tr><td>${escapeHtml(name)}</td><td class="num">$${d.usd.toLocaleString('en-US')}</td><td class="num">₹${d.inr.toLocaleString('en-IN')}</td><td class="num">${(d.inr/d.usd).toFixed(2)}</td><td class="num">${d.count}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderRemitYearTable(){
+  const wrap = document.getElementById('remitYearTable');
+  const filtered = getFilteredRemittances();
+  if(filtered.length===0){ wrap.innerHTML = ''; return; }
+  const byYear = {};
+  filtered.forEach(r=>{
+    const y = r.date.slice(0,4);
+    if(!byYear[y]) byYear[y] = { usd:0, inr:0, count:0 };
+    byYear[y].usd += r.usdAmount;
+    byYear[y].inr += r.inrAmount;
+    byYear[y].count++;
+  });
+  const years = Object.keys(byYear).sort().reverse();
+  let html = `<table class="cat-table"><thead><tr><th>Year</th><th style="text-align:right;">USD sent</th><th style="text-align:right;">INR received</th><th style="text-align:right;">Avg rate</th><th style="text-align:right;">Transfers</th></tr></thead><tbody>`;
+  years.forEach(y=>{
+    const d = byYear[y];
+    html += `<tr><td>${y}</td><td class="num">$${d.usd.toLocaleString('en-US')}</td><td class="num">₹${d.inr.toLocaleString('en-IN')}</td><td class="num">${(d.inr/d.usd).toFixed(2)}</td><td class="num">${d.count}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderRemitSummary(){
+  const filtered = getFilteredRemittances();
+  const totalUsd = filtered.reduce((s,r)=>s+r.usdAmount,0);
+  const totalInr = filtered.reduce((s,r)=>s+r.inrAmount,0);
+  document.getElementById('remitTotalUsd').textContent = '$'+totalUsd.toLocaleString('en-US');
+  document.getElementById('remitTotalInr').textContent = '₹'+totalInr.toLocaleString('en-IN');
+  document.getElementById('remitAvgRate').textContent = totalUsd>0 ? (totalInr/totalUsd).toFixed(2) : '—';
+  document.getElementById('remitCount').textContent = filtered.length;
+}
+
+function renderRemitViews(){
+  renderRemitList();
+  renderRemitRecipientTable();
+  renderRemitYearTable();
+  renderRemitSummary();
+}
+function renderRemit(){
+  populateRemitFilters();
+  renderRemitViews();
+}
+
 // ---------- SIPs (installments auto-log on their due date, monthly, until stopped) ----------
 function getSips(){ return getNW().sips; }
 
@@ -3017,6 +3202,7 @@ function setupCollapsibleSection(headId, arrowId, bodyId, storageKey){
   });
 }
 setupCollapsibleSection('lendingSectionHead','lendingArrow','lendingSectionBody','spendingTracker.collapsed.lending');
+setupCollapsibleSection('remitSectionHead','remitArrow','remitSectionBody','spendingTracker.collapsed.remit');
 setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
 setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
@@ -3052,6 +3238,7 @@ function renderAll(){
   syncSwpWithdrawals(); // same reasoning — a SWP-driven withdrawal/transfer should show up immediately too
   renderNetWorth();
   renderLending();
+  renderRemit();
   renderSips();
   renderInsurance();
   renderRecurring();
@@ -3148,7 +3335,7 @@ function mergeNetWorthFromBackup(incomingNW){
 }
 
 document.getElementById('exportJson').addEventListener('click', ()=>{
-  const payload = { transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], exportedAt: new Date().toISOString() };
+  const payload = { transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], remittances, exportedAt: new Date().toISOString() };
   downloadBlob('spending-tracker-backup-'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(payload, null, 2), 'application/json');
   localStorage.setItem('spendingTracker.lastExport', Date.now().toString());
   document.getElementById('backupReminder').style.display = 'none';
@@ -3184,6 +3371,10 @@ document.getElementById('importFile').addEventListener('change', (e)=>{
       if(data.budgets){
         Object.assign(budgets.INR, data.budgets.INR||{});
         Object.assign(budgets.USD, data.budgets.USD||{});
+      }
+      if(Array.isArray(data.remittances)){
+        const existingRemitIds = new Set(remittances.map(r=>r.id));
+        data.remittances.forEach(r=>{ if(r.id && !existingRemitIds.has(r.id) && !isDeleted(r.id)) remittances.push(r); });
       }
       saveData();
       renderAll();
@@ -3311,7 +3502,7 @@ async function pushToDrive(silent){
   try{
     driveSyncing = true;
     if(silent) setDriveStatus('Syncing to Drive…', true);
-    const payload = JSON.stringify({ transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], exportedAt: new Date().toISOString() }, null, 2);
+    const payload = JSON.stringify({ transactions, categories, netWorthData, budgets, deletedIds: [...deletedIds], remittances, exportedAt: new Date().toISOString() }, null, 2);
     const existing = await findDriveFile();
     const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
     const boundary = 'ledgerboundary' + Date.now();
@@ -3376,11 +3567,16 @@ async function pullFromDrive(silent){
       Object.assign(budgets.INR, data.budgets.INR||{});
       Object.assign(budgets.USD, data.budgets.USD||{});
     }
-    if(added>0 || addedHoldings>0){
+    let addedRemit = 0;
+    if(Array.isArray(data.remittances)){
+      const existingRemitIds = new Set(remittances.map(r=>r.id));
+      data.remittances.forEach(r=>{ if(r.id && !existingRemitIds.has(r.id) && !isDeleted(r.id)){ remittances.push(r); addedRemit++; } });
+    }
+    if(added>0 || addedHoldings>0 || addedRemit>0){
       saveDataLocalOnly(); // don't re-trigger a push for data we just pulled
       renderAll();
     }
-    if(!silent) alert((added>0||addedHoldings>0) ? `Restored ${added} new transaction(s) and ${addedHoldings} holding(s) from Drive.` : 'Already up to date with Drive.');
+    if(!silent) alert((added>0||addedHoldings>0||addedRemit>0) ? `Restored ${added} new transaction(s), ${addedHoldings} holding(s), and ${addedRemit} remittance(s) from Drive.` : 'Already up to date with Drive.');
     else fetchDriveUserInfo();
   } catch(e){
     const msg = 'Restore failed: '+(e && e.message ? e.message : 'unknown error');
@@ -3424,6 +3620,7 @@ document.getElementById('sipStartDate').value = todayLocalISO();
 document.getElementById('insBoughtDate').value = todayLocalISO();
 document.getElementById('recurStartDate').value = todayLocalISO();
 document.getElementById('swpStartDate').value = todayLocalISO();
+document.getElementById('remitDate').value = todayLocalISO();
 renderAll();
 checkBackupReminder();
 
