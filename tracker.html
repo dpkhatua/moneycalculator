@@ -718,8 +718,18 @@
   <div class="nw-subhead">By year</div>
   <div id="remitYearTable" style="margin-bottom:28px;"></div>
 
-  <div class="nw-subhead">All transfers</div>
-  <div id="remitList" style="margin-bottom:44px;"></div>
+  <div class="nw-subhead">By account, year by year</div>
+  <p class="section-desc" style="margin-top:-8px;">How much went to each account, broken down by year — scroll sideways on smaller screens.</p>
+  <div style="overflow-x:auto;margin-bottom:28px;">
+    <div id="remitAccountYearTable" style="min-width:500px;"></div>
+  </div>
+
+  <div class="cat-group-header" id="remitListToggle">
+    <span class="cat-arrow" id="remitListArrow">▸</span>
+    <span class="cat-group-name">All transfers</span>
+    <span class="cat-group-meta" id="remitListMeta"></span>
+  </div>
+  <div id="remitList" style="margin-bottom:44px;display:none;"></div>
   </div>
 
   <!-- SIPs -->
