@@ -32,7 +32,8 @@ function emptyNetWorthBucket(){
     sips: [],    // ongoing SIPs — installments auto-log on their due date
     insurance: [], // ongoing insurance policies
     recurringExpenses: [], // "definite spending" — fixed bills that auto-log as real expenses on schedule
-    swps: [] // Systematic Withdrawal (and optional transfer-into-SIP): auto-withdraws from one holding, optionally auto-invests into another
+    swps: [], // Systematic Withdrawal (and optional transfer-into-SIP): auto-withdraws from one holding, optionally auto-invests into another
+    wealthSnapshots: [] // { month:'YYYY-MM', netWorth, investedValue, currentValue } — one entry per month, refreshed each time you open the tracker that month. Can't be reconstructed for months before this feature existed, since past market values were never recorded.
   };
 }
 
@@ -1565,6 +1566,98 @@ function renderInvestYearlyTable(){
   wrap.innerHTML = html;
 }
 
+// Captures/refreshes this month's net worth snapshot every time the tracker
+// loads. Past months are never touched again once the calendar moves on, so
+// history quietly accumulates from here forward — there's no way to know
+// what things were worth on past dates that were never recorded.
+function updateWealthSnapshot(){
+  const nw = getNW();
+  const investmentValue = nw.holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
+  const liabilities = nw.liabilities.homeLoan + nw.liabilities.carLoan + nw.liabilities.ccDebt + nw.liabilities.personalLoan + nw.liabilities.otherLiability;
+  const netWorth = investmentValue - liabilities;
+  const investedValue = nw.holdings.reduce((s,h)=>s+holdingInvested(h),0);
+  const thisMonth = todayLocalISO().slice(0,7);
+
+  if(!nw.wealthSnapshots) nw.wealthSnapshots = [];
+  const existing = nw.wealthSnapshots.find(s=>s.month===thisMonth);
+  let changed = false;
+  if(existing){
+    if(existing.netWorth!==netWorth || existing.investedValue!==investedValue || existing.currentValue!==investmentValue){
+      existing.netWorth = netWorth;
+      existing.investedValue = investedValue;
+      existing.currentValue = investmentValue;
+      changed = true;
+    }
+  } else {
+    nw.wealthSnapshots.push({ month: thisMonth, netWorth, investedValue, currentValue: investmentValue });
+    changed = true;
+  }
+  // Persist locally right away so this survives a reload even if you close
+  // the tab without doing anything else — but skip a full saveData() (and
+  // the Drive push it triggers) on every single render; the next real
+  // change you make will carry this along to Drive naturally.
+  if(changed) persistLocal();
+}
+
+function renderWealthTrendChart(){
+  const snapshots = (getNW().wealthSnapshots||[]).slice().sort((a,b)=>a.month.localeCompare(b.month));
+  if(snapshots.length===0) return;
+
+  const labels = snapshots.map(s=>{
+    const [y,m] = s.month.split('-');
+    return new Date(y, m-1, 1).toLocaleString('en-IN', {month:'short', year:'numeric'});
+  });
+  const totals = snapshots.map(s=>s.netWorth);
+  const pctChange = snapshots.map((s,i)=>{
+    if(i===0) return null;
+    const prev = snapshots[i-1].netWorth;
+    return prev!==0 ? ((s.netWorth-prev)/Math.abs(prev))*100 : null;
+  });
+
+  const ctx = document.getElementById('wealthTrendChart').getContext('2d');
+  if(charts['wealthTrendChart']) charts['wealthTrendChart'].destroy();
+  charts['wealthTrendChart'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Net worth', data: totals, yAxisID: 'y',
+          borderColor: '#4a7fd6', backgroundColor: '#4a7fd6',
+          pointStyle: 'rect', pointRadius: 5, borderWidth: 2, tension: 0.15
+        },
+        {
+          label: 'Change (%)', data: pctChange, yAxisID: 'y1',
+          borderColor: 'var(--green-deep, #1F6F50)', backgroundColor: '#4d6b3f',
+          pointStyle: 'triangle', pointRadius: 6, borderWidth: 2, tension: 0.15
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position:'top', labels:{ usePointStyle:true, font:{family:'ui-monospace, Menlo, Consolas, monospace', size:11} } },
+        tooltip: { callbacks: { label: (c)=> c.dataset.label + ': ' + (c.dataset.yAxisID==='y1' ? (c.parsed.y===null?'—':c.parsed.y.toFixed(2)+'%') : fmtAmount(c.parsed.y)) } }
+      },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{family:'ui-monospace, Menlo, Consolas, monospace', size:10}} },
+        y: {
+          position: 'left', grid:{color:'rgba(27,42,34,0.08)'},
+          ticks: { font:{family:'ui-monospace, Menlo, Consolas, monospace', size:10}, callback:(v)=>fmtAmount(v) },
+          title: { display:true, text:'Net worth', font:{size:11} }
+        },
+        y1: {
+          position: 'right', grid:{display:false},
+          ticks: { font:{family:'ui-monospace, Menlo, Consolas, monospace', size:10}, callback:(v)=>v.toFixed(1)+'%' },
+          title: { display:true, text:'Change (%)', font:{size:11} }
+        }
+      }
+    }
+  });
+}
+
+
+
 const ASSET_CLASS_PALETTE = ['#1F6F50','#C98A2C','#A2452F','#4B5A50','#7a9e8f','#d9b06b','#c47a68','#8fa89d','#3d6b8a','#6b5b95','#88a09e'];
 
 function computeCategoryBreakdown(){
@@ -1668,6 +1761,8 @@ function renderNetWorth(){
   renderHoldingsList();
   const investmentValue = renderNWTotals();
   renderInvestYearlyTable();
+  updateWealthSnapshot();
+  renderWealthTrendChart();
   renderHoldingsChart();
   renderCategoryBreakdownTable();
   renderNWSummary(investmentValue);
