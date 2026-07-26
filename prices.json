@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64649.2188,
+    "price": 64710.7812,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1911.59,
+    "price": 1913.49,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -164,7 +164,7 @@
     "currency": "INR"
   },
   "DLF.NS": {
-    "price": 645.2,
+    "price": 637.2,
     "currency": "INR"
   },
   "DRREDDY.NS": {
@@ -400,7 +400,7 @@
     "currency": "INR"
   },
   "WIPRO.NS": {
-    "price": 177.12,
+    "price": 175.12,
     "currency": "INR"
   },
   "CGPOWER.NS": {
@@ -412,7 +412,7 @@
     "currency": "INR"
   },
   "DEEPAKNTR.NS": {
-    "price": 1649.6,
+    "price": 1642.1,
     "currency": "INR"
   },
   "DIXON.NS": {
@@ -499,5 +499,5 @@
     "price": 1768.7,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-26T17:54:33.859526+00:00"
+  "updatedAt": "2026-07-26T18:53:20.838940+00:00"
 }
