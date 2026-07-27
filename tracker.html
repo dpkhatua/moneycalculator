@@ -852,6 +852,74 @@
   <div class="holding-list" id="insuranceList" style="margin-bottom:44px;"></div>
   </div>
 
+  <!-- Loans Taken -->
+  <div class="section-head collapsible" id="loansSectionHead"><h2><span class="section-arrow" id="loansArrow">▾</span>Loans taken</h2></div>
+  <div id="loansSectionBody">
+  <p class="section-desc">Any loan you've borrowed — home, car, personal, education, whatever. EMI logs itself automatically on schedule. <b>The outstanding balance counts as a liability in your net worth</b> — don't also enter it under the flat liability fields above, or it'll be counted twice.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a loan</div>
+      <div class="holding-form">
+        <div>
+          <label>Name</label>
+          <input type="text" id="loanName" placeholder="e.g. Home Loan, Car Loan" maxlength="80">
+        </div>
+        <div>
+          <label>Lender</label>
+          <input type="text" id="loanLender" placeholder="e.g. HDFC, SBI" maxlength="80">
+        </div>
+        <div>
+          <label>Loan type</label>
+          <select id="loanType">
+            <option value="Home">Home</option>
+            <option value="Car">Car</option>
+            <option value="Personal">Personal</option>
+            <option value="Education">Education</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label>Principal amount</label>
+          <input type="number" id="loanPrincipal" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>EMI amount</label>
+          <input type="number" id="loanEmi" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Frequency</label>
+          <select id="loanFrequency">
+            <option value="months:1" selected>Monthly</option>
+            <option value="months:3">Quarterly</option>
+            <option value="days:7">Weekly</option>
+          </select>
+        </div>
+        <div>
+          <label>Start date</label>
+          <input type="date" id="loanStartDate">
+        </div>
+        <div>
+          <label>Tenure (months) <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <input type="number" id="loanTenure" min="0" step="1" placeholder="e.g. 240">
+        </div>
+        <div>
+          <button class="btn-primary" id="addLoan" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Active loans</div><div class="val" id="loanActiveCount">0</div></div>
+    <div class="t"><div class="lbl">Monthly EMI commitment</div><div class="val" id="loanMonthlyTotal">0</div></div>
+    <div class="t"><div class="lbl">Total paid so far</div><div class="val" id="loanTotalPaid">0</div></div>
+    <div class="t"><div class="lbl">Total outstanding</div><div class="val brick" id="loanTotalOutstanding">0</div></div>
+  </div>
+
+  <div class="holding-list" id="loansList" style="margin-bottom:44px;"></div>
+  </div>
+
   <!-- Recurring Expenses -->
   <div class="section-head collapsible" id="recurringSectionHead"><h2><span class="section-arrow" id="recurringArrow">▾</span>Recurring expenses</h2></div>
   <div id="recurringSectionBody">
