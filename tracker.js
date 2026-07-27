@@ -1,4 +1,3 @@
-
 const STORAGE_KEY = 'spendingTracker.transactions.v1';
 const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
@@ -41,7 +40,8 @@ function emptyNetWorthBucket(){
     insurance: [], // ongoing insurance policies
     recurringExpenses: [], // "definite spending" — fixed bills that auto-log as real expenses on schedule
     swps: [], // Systematic Withdrawal (and optional transfer-into-SIP): auto-withdraws from one holding, optionally auto-invests into another
-    wealthSnapshots: [] // { month:'YYYY-MM', netWorth, investedValue, currentValue } — one entry per month, refreshed each time you open the tracker that month. Can't be reconstructed for months before this feature existed, since past market values were never recorded.
+    wealthSnapshots: [], // { month:'YYYY-MM', netWorth, investedValue, currentValue } — one entry per month, refreshed each time you open the tracker that month. Can't be reconstructed for months before this feature existed, since past market values were never recorded.
+    loansTaken: [] // any loan you've borrowed (home/car/personal/etc.) — EMI auto-logs on schedule; outstanding balance counts as a liability in net worth
   };
 }
 
@@ -1748,7 +1748,9 @@ function bindFlatNWField(id, group, key){
 function renderNWSummary(investmentValue){
   const nw = getNW();
   if(investmentValue===undefined) investmentValue = nw.holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
-  const liabilities = nw.liabilities.homeLoan + nw.liabilities.carLoan + nw.liabilities.ccDebt + nw.liabilities.personalLoan + nw.liabilities.otherLiability;
+  const flatLiabilities = nw.liabilities.homeLoan + nw.liabilities.carLoan + nw.liabilities.ccDebt + nw.liabilities.personalLoan + nw.liabilities.otherLiability;
+  const loanLiabilities = (nw.loansTaken||[]).filter(l=>l.status==='active').reduce((s,l)=>s+loanOutstanding(l),0);
+  const liabilities = flatLiabilities + loanLiabilities;
   const grandTotal = investmentValue - liabilities;
 
   document.getElementById('nwInvestValue').textContent = fmtAmount(investmentValue);
@@ -2804,6 +2806,213 @@ function renderInsurance(){
   renderInsuranceSummary();
 }
 
+// ---------- Loans Taken (EMI auto-fires on schedule; outstanding balance counts as a liability) ----------
+function getLoans(){ return getNW().loansTaken; }
+
+function loanFrequencyLabel(loan){ return SIP_FREQ_LABEL[`${loan.frequencyUnit}:${loan.frequencyValue}`] || `Every ${loan.frequencyValue} ${loan.frequencyUnit}`; }
+function loanMonthlyEquivalent(loan){
+  return loan.frequencyUnit==='days' ? loan.emiAmount*(30.44/loan.frequencyValue) : loan.emiAmount/loan.frequencyValue;
+}
+function loanTotalPaid(loan){ return loan.payments.reduce((s,p)=>s+p.amount,0); }
+function loanOutstanding(loan){ return Math.max(0, loan.principalAmount - loanTotalPaid(loan)); }
+
+function syncLoanEmis(){
+  const today = todayLocalISO();
+  let changed = false;
+  getLoans().forEach(loan=>{
+    if(loan.status!=='active') return;
+    let guard = 0;
+    while(loan.nextDueDate<=today && loanOutstanding(loan)>0 && guard<600){
+      loan.payments.push({ id: nwUid(), date: loan.nextDueDate, amount: Math.min(loan.emiAmount, loanOutstanding(loan)) });
+      loan.nextDueDate = advanceDate(loan.nextDueDate, loan.frequencyUnit, loan.frequencyValue);
+      changed = true;
+      guard++;
+    }
+    if(loanOutstanding(loan)<=0) loan.status = 'closed';
+  });
+  if(changed) saveData();
+}
+
+document.getElementById('addLoan').addEventListener('click', ()=>{
+  const name = document.getElementById('loanName').value.trim();
+  const lender = document.getElementById('loanLender').value.trim();
+  const loanType = document.getElementById('loanType').value;
+  const principalAmount = +document.getElementById('loanPrincipal').value;
+  const emiAmount = +document.getElementById('loanEmi').value;
+  const [frequencyUnit, freqValueRaw] = document.getElementById('loanFrequency').value.split(':');
+  const frequencyValue = +freqValueRaw;
+  const startDate = document.getElementById('loanStartDate').value || todayLocalISO();
+  const tenureRaw = document.getElementById('loanTenure').value;
+  const tenureMonths = tenureRaw ? +tenureRaw : null;
+
+  if(!name){ alert('Give this loan a name.'); return; }
+  if(!principalAmount || principalAmount<=0){ alert('Enter the principal amount.'); return; }
+  if(!emiAmount || emiAmount<=0){ alert('Enter the EMI amount.'); return; }
+
+  getLoans().push({
+    id: nwUid(),
+    name, lender: lender||null, loanType, principalAmount, emiAmount,
+    frequencyUnit, frequencyValue, startDate, tenureMonths,
+    status: 'active', stoppedDate: null,
+    nextDueDate: startDate,
+    payments: []
+  });
+  saveData();
+  document.getElementById('loanName').value = '';
+  document.getElementById('loanLender').value = '';
+  document.getElementById('loanPrincipal').value = '';
+  document.getElementById('loanEmi').value = '';
+  document.getElementById('loanTenure').value = '';
+  document.getElementById('loanStartDate').value = todayLocalISO();
+  renderLoans();
+});
+
+function toggleLoanClosed(id){
+  const loan = getLoans().find(x=>x.id===id);
+  if(!loan) return;
+  loan.status = loan.status==='closed' ? 'active' : 'closed';
+  if(loan.status==='active' && loan.nextDueDate<todayLocalISO()) loan.nextDueDate = todayLocalISO();
+  saveData();
+  renderLoans();
+}
+function editLoanInfo(id){
+  const loan = getLoans().find(x=>x.id===id);
+  if(!loan) return;
+  const newName = prompt('Name:', loan.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newLender = prompt('Lender:', loan.lender||'');
+  if(newLender===null) return;
+  const newEmi = prompt('EMI amount (applies to future payments only):', loan.emiAmount);
+  if(newEmi===null) return;
+  const emi = +newEmi;
+  if(!emi || emi<=0){ alert('Enter a valid EMI amount.'); return; }
+  loan.name = newName.trim();
+  loan.lender = newLender.trim() || null;
+  loan.emiAmount = emi;
+  saveData();
+  renderLoans();
+}
+function editLoanPayment(loanId, paymentId){
+  const loan = getLoans().find(x=>x.id===loanId);
+  if(!loan) return;
+  const p = loan.payments.find(x=>x.id===paymentId);
+  if(!p) return;
+  const amtRaw = prompt('Amount:', p.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', p.date);
+  if(dateRaw===null) return;
+  p.amount = amt;
+  p.date = dateRaw || p.date;
+  saveData();
+  renderLoans();
+}
+function deleteLoanPayment(loanId, paymentId){
+  const loan = getLoans().find(x=>x.id===loanId);
+  if(!loan) return;
+  if(!confirm('Delete this payment entry?')) return;
+  loan.payments = loan.payments.filter(x=>x.id!==paymentId);
+  if(loanOutstanding(loan)>0) loan.status = 'active';
+  saveData();
+  renderLoans();
+}
+function deleteLoan(id){
+  const loan = getLoans().find(x=>x.id===id);
+  if(!loan) return;
+  markDeleted(id);
+  if(!confirm(`Delete "${loan.name}" entirely, including its payment history? This can't be undone.`)) return;
+  getNW().loansTaken = getLoans().filter(x=>x.id!==id);
+  saveData();
+  renderLoans();
+}
+
+function buildLoanCard(loan){
+  const totalPaid = loanTotalPaid(loan);
+  const outstanding = loanOutstanding(loan);
+  const isClosed = loan.status==='closed';
+  const remainingEmis = loan.tenureMonths ? Math.max(0, loan.tenureMonths - loan.payments.length) : null;
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${isClosed?'repaid':'outstanding'}">${isClosed?'Closed':'Active'}</span>
+      <span class="h-name">${escapeHtml(loan.name)}</span>
+      <span class="h-meta">${loan.lender?escapeHtml(loan.lender)+' · ':''}${escapeHtml(loan.loanType)}</span>
+    </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Principal</span>${fmtAmount(loan.principalAmount)}</div>
+      <div class="h-figure"><span class="lbl">EMI / ${loanFrequencyLabel(loan)}</span>${fmtAmount(loan.emiAmount)}</div>
+      <div class="h-figure"><span class="lbl">Total paid</span>${fmtAmount(totalPaid)}</div>
+      <div class="h-figure h-gain loss"><span class="lbl">Outstanding</span>${fmtAmount(outstanding)}</div>
+      ${remainingEmis!==null?`<div class="h-figure"><span class="lbl">EMIs left</span>${remainingEmis}</div>`:''}
+      ${!isClosed?`<div class="h-figure"><span class="lbl">Next due</span>${loan.nextDueDate}</div>`:''}
+    </div>
+    <div class="h-actions">
+      <button data-action="toggle">${isClosed?'▶ Reopen':'✓ Mark closed'}</button>
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="log">☰ Payments</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="loanlog-${loan.id}" style="display:none;"></div>
+  `;
+  card.querySelector('[data-action=toggle]').addEventListener('click', ()=>toggleLoanClosed(loan.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editLoanInfo(loan.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('loanlog-'+loan.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteLoan(loan.id));
+
+  const logEl = card.querySelector('.h-log');
+  if(loan.payments.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No EMI payments logged yet.</span>';
+  }
+  loan.payments.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Paid ${fmtAmount(p.amount)} on ${p.date}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editLoanPayment(loan.id, p.id));
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteLoanPayment(loan.id, p.id));
+    row.appendChild(editBtn); row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+  return card;
+}
+
+function renderLoansList(){
+  const wrap = document.getElementById('loansList');
+  const loans = getLoans();
+  if(loans.length===0){
+    wrap.innerHTML = '<div class="empty-state">No loans logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  loans.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(loan=>wrap.appendChild(buildLoanCard(loan)));
+}
+function renderLoansSummary(){
+  const loans = getLoans();
+  const active = loans.filter(l=>l.status==='active');
+  document.getElementById('loanActiveCount').textContent = active.length;
+  document.getElementById('loanMonthlyTotal').textContent = fmtAmount(active.reduce((s,l)=>s+loanMonthlyEquivalent(l),0));
+  document.getElementById('loanTotalPaid').textContent = fmtAmount(loans.reduce((s,l)=>s+loanTotalPaid(l),0));
+  document.getElementById('loanTotalOutstanding').textContent = fmtAmount(active.reduce((s,l)=>s+loanOutstanding(l),0));
+}
+function renderLoans(){
+  syncLoanEmis();
+  renderLoansList();
+  renderLoansSummary();
+  renderNWSummary(); // outstanding loan balance affects net worth's liabilities total
+}
+
 // ---------- Upcoming due-date notifications ----------
 // SIPs and recurring expenses: warn 5 days out. Insurance: warn a full month
 // out, since premiums are usually bigger and less convenient to scramble for.
@@ -2831,6 +3040,13 @@ function renderNotifications(){
     const days = daysBetween(today, swp.nextDueDate);
     if(days>=0 && days<=5){
       items.push({ days, kind:'swp', text:`SWP "${swp.name}" — ${fmtAmount(swp.amount)} withdrawal due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${swp.nextDueDate})` });
+    }
+  });
+  getLoans().forEach(loan=>{
+    if(loan.status!=='active') return;
+    const days = daysBetween(today, loan.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, kind:'loan', text:`Loan "${loan.name}" — EMI ${fmtAmount(loan.emiAmount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${loan.nextDueDate})` });
     }
   });
   getInsurance().forEach(ins=>{
@@ -3391,6 +3607,7 @@ setupCollapsibleSection('remitSectionHead','remitArrow','remitSectionBody','spen
 setupCollapsibleSection('manageCatSectionHead','manageCatArrow','manageCatSectionBody','spendingTracker.collapsed.manageCat');
 setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
+setupCollapsibleSection('loansSectionHead','loansArrow','loansSectionBody','spendingTracker.collapsed.loans');
 setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
 setupCollapsibleSection('swpSectionHead','swpArrow','swpSectionBody','spendingTracker.collapsed.swp');
 setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
@@ -3423,6 +3640,7 @@ function renderAll(){
   renderTagBreakdown();
   syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
   syncSwpWithdrawals(); // same reasoning — a SWP-driven withdrawal/transfer should show up immediately too
+  syncLoanEmis(); // same reasoning — a fresh EMI payment should reflect in outstanding balance right away
   renderNetWorth();
   renderLending();
   renderRemit();
@@ -3430,6 +3648,7 @@ function renderAll(){
   renderInsurance();
   renderRecurring();
   renderSwps();
+  renderLoans();
   renderNotifications();
 }
 
@@ -3533,6 +3752,10 @@ function mergeNetWorthFromBackup(incomingNW, preferIncoming){
     if(Array.isArray(incomingBucket.swps)){
       if(!localBucket.swps) localBucket.swps = [];
       mergeArrayById(localBucket.swps, incomingBucket.swps, preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.loansTaken)){
+      if(!localBucket.loansTaken) localBucket.loansTaken = [];
+      mergeArrayById(localBucket.loansTaken, incomingBucket.loansTaken, preferIncoming);
     }
     if(Array.isArray(incomingBucket.wealthSnapshots)){
       if(!localBucket.wealthSnapshots) localBucket.wealthSnapshots = [];
@@ -3870,6 +4093,7 @@ document.getElementById('insBoughtDate').value = todayLocalISO();
 document.getElementById('recurStartDate').value = todayLocalISO();
 document.getElementById('swpStartDate').value = todayLocalISO();
 document.getElementById('remitDate').value = todayLocalISO();
+document.getElementById('loanStartDate').value = todayLocalISO();
 renderAll();
 checkBackupReminder();
 
