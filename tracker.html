@@ -407,6 +407,10 @@
         <datalist id="txTagOptions"></datalist>
       </div>
       <div class="field">
+        <label>Account <span style="font-weight:400;color:var(--ink-soft);">(optional — auto debits/credits it)</span></label>
+        <select id="txAccount"></select>
+      </div>
+      <div class="field">
         <label>Amount <span id="txAmountCurrency" style="font-family:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;color:var(--ink);">₹</span></label>
         <input type="number" id="txAmount" min="0" step="1" placeholder="0">
       </div>
@@ -681,7 +685,7 @@
   <!-- Remittances -->
   <div class="section-head collapsible" id="remitSectionHead"><h2><span class="section-arrow" id="remitArrow">▾</span>Remittances (USA → India)</h2></div>
   <div id="remitSectionBody">
-  <p class="section-desc">Money sent from the US to India — to your own account, your parents, your sisters, wherever. Tracked in both currencies at once, by recipient/account and by year. Not included in net worth (it's a transfer, not new wealth) and doesn't follow the 🇺🇸/🇮🇳 toggle above — always shown together.</p>
+  <p class="section-desc">Money sent from the US to India — to your own account, your parents, your sisters, wherever. Tracked in both currencies at once, by recipient/account and by year, and doesn't follow the 🇺🇸/🇮🇳 toggle above — always shown together. If you link a USD account to debit and/or an INR account to credit, those balances (and therefore each currency's own net worth) update automatically; leave either blank to just log the transfer without touching any account.</p>
 
   <div class="tracker-grid" style="margin-bottom:20px;">
     <div class="form-col" style="border-right:none;">
@@ -703,6 +707,14 @@
         <div>
           <label>INR received</label>
           <input type="number" id="remitInr" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Debit from (USD account) <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <select id="remitSourceAccount"></select>
+        </div>
+        <div>
+          <label>Credit to (INR account) <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <select id="remitDestAccount"></select>
         </div>
         <div>
           <label>Note <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
@@ -779,6 +791,10 @@
         <div>
           <label>Linked to <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
           <select id="sipLinkedHolding"></select>
+        </div>
+        <div>
+          <label>Debit from <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <select id="sipDebitAccount"></select>
         </div>
         <div>
           <button class="btn-primary" id="addSip" style="padding:9px 16px;">+ Add</button>
@@ -902,6 +918,10 @@
         <div>
           <label>Tenure (months) <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
           <input type="number" id="loanTenure" min="0" step="1" placeholder="e.g. 240">
+        </div>
+        <div>
+          <label>EMI debited from <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <select id="loanDebitAccount"></select>
         </div>
         <div>
           <button class="btn-primary" id="addLoan" style="padding:9px 16px;">+ Add</button>
