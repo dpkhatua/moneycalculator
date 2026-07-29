@@ -465,7 +465,8 @@
   </div>
 
   <!-- Charts -->
-  <div class="section-head"><h2>Where it's going</h2></div>
+  <div class="section-head collapsible" id="chartsSectionHead"><h2><span class="section-arrow" id="chartsArrow">▾</span>Where it's going</h2></div>
+  <div id="chartsSectionBody">
   <p class="section-desc">Based on whatever month is selected in the filter above.</p>
   <div class="charts-grid">
     <div class="chart-col">
@@ -477,14 +478,18 @@
       <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
     </div>
   </div>
+  </div>
 
   <!-- Yearly Statistics -->
-  <div class="section-head"><h2>Yearly statistics</h2></div>
+  <div class="section-head collapsible" id="yearlyStatsSectionHead"><h2><span class="section-arrow" id="yearlyStatsArrow">▾</span>Yearly statistics</h2></div>
+  <div id="yearlyStatsSectionBody">
   <p class="section-desc">Every year you've logged data for, income vs. expenses side by side.</p>
   <div id="yearlyStatsTable" style="margin-bottom:44px;"></div>
+  </div>
 
   <!-- Monthly Category Breakdown -->
-  <div class="section-head"><h2>Monthly spending by category</h2></div>
+  <div class="section-head collapsible" id="monthlyCatSectionHead"><h2><span class="section-arrow" id="monthlyCatArrow">▾</span>Monthly spending by category</h2></div>
+  <div id="monthlyCatSectionBody">
   <p class="section-desc">How much went to each category, month by month — scroll sideways on smaller screens.</p>
   <div class="filter-bar" style="margin-bottom:10px;">
     <select id="monthlyCategoryYear"></select>
@@ -492,14 +497,18 @@
   <div style="overflow-x:auto;margin-bottom:44px;">
     <div id="monthlyCategoryTable" style="min-width:600px;"></div>
   </div>
+  </div>
 
   <!-- Spending by Tag -->
-  <div class="section-head"><h2>Spending by tag</h2></div>
+  <div class="section-head collapsible" id="tagBreakdownSectionHead"><h2><span class="section-arrow" id="tagBreakdownArrow">▾</span>Spending by tag</h2></div>
+  <div id="tagBreakdownSectionBody">
   <p class="section-desc">If you tag transactions with who or what they're for (e.g. a person, a household, a trip), see totals per tag here. Untagged transactions aren't included.</p>
   <div id="tagBreakdownTable" style="margin-bottom:44px;"></div>
+  </div>
 
   <!-- Net Worth -->
-  <div class="section-head"><h2>Net worth</h2></div>
+  <div class="section-head collapsible" id="netWorthSectionHead"><h2><span class="section-arrow" id="netWorthArrow">▾</span>Net worth</h2></div>
+  <div id="netWorthSectionBody">
   <p class="section-desc">Tracks whatever's selected in the currency toggle up top — switch to USD to log your US stocks separately from everything in INR. For share/unit-based assets, enter quantity and price; for lump-sum ones like FD or savings, just enter the amount as a single unit.</p>
 
   <div class="tracker-grid" style="margin-bottom:20px;">
@@ -639,6 +648,7 @@
     <div class="summary-card"><div class="label">Investment value</div><div class="value" id="nwInvestValue">0</div></div>
     <div class="summary-card"><div class="label">Liabilities</div><div class="value brick" id="nwLiabTotal">0</div></div>
     <div class="summary-card"><div class="label">Net worth</div><div class="value" id="nwGrandTotal" style="font-size:1.7rem;">0</div></div>
+  </div>
   </div>
 
   <!-- Lending -->
@@ -1062,7 +1072,8 @@
   </div>
 
   <!-- Data management -->
-  <div class="section-head"><h2>Your data</h2></div>
+  <div class="section-head collapsible" id="yourDataSectionHead"><h2><span class="section-arrow" id="yourDataArrow">▾</span>Your data</h2></div>
+  <div id="yourDataSectionBody">
   <p class="section-desc">Everything here is stored only in this browser. Back it up regularly, especially before clearing your browser data or switching devices.</p>
 
   <div class="drive-box">
@@ -1105,6 +1116,7 @@
       <input type="file" id="importFile" accept=".json" style="display:none;">
     </label>
     <button class="btn-secondary danger" id="clearAll">🗑 Clear all data</button>
+  </div>
   </div>
 
 </main>
