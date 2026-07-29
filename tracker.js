@@ -1,4 +1,3 @@
-
 const STORAGE_KEY = 'spendingTracker.transactions.v1';
 const CATEGORY_KEY = 'spendingTracker.categories.v1';
 const CURRENCY_KEY = 'spendingTracker.currentCurrency';
@@ -3746,7 +3745,8 @@ function setupCollapsibleSection(headId, arrowId, bodyId, storageKey){
   const head = document.getElementById(headId);
   const arrow = document.getElementById(arrowId);
   const body = document.getElementById(bodyId);
-  const collapsed = sessionStorage.getItem(storageKey) === '1';
+  const stored = sessionStorage.getItem(storageKey);
+  const collapsed = stored===null ? true : stored==='1'; // collapsed by default until you expand it yourself
   body.style.display = collapsed ? 'none' : '';
   arrow.textContent = collapsed ? '▸' : '▾';
   head.addEventListener('click', ()=>{
@@ -3765,6 +3765,12 @@ setupCollapsibleSection('loansSectionHead','loansArrow','loansSectionBody','spen
 setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
 setupCollapsibleSection('swpSectionHead','swpArrow','swpSectionBody','spendingTracker.collapsed.swp');
 setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
+setupCollapsibleSection('chartsSectionHead','chartsArrow','chartsSectionBody','spendingTracker.collapsed.charts');
+setupCollapsibleSection('yearlyStatsSectionHead','yearlyStatsArrow','yearlyStatsSectionBody','spendingTracker.collapsed.yearlyStats');
+setupCollapsibleSection('monthlyCatSectionHead','monthlyCatArrow','monthlyCatSectionBody','spendingTracker.collapsed.monthlyCat');
+setupCollapsibleSection('tagBreakdownSectionHead','tagBreakdownArrow','tagBreakdownSectionBody','spendingTracker.collapsed.tagBreakdown');
+setupCollapsibleSection('netWorthSectionHead','netWorthArrow','netWorthSectionBody','spendingTracker.collapsed.netWorth');
+setupCollapsibleSection('yourDataSectionHead','yourDataArrow','yourDataSectionBody','spendingTracker.collapsed.yourData');
 
 function setCurrency(currency){
   currentCurrency = currency;
