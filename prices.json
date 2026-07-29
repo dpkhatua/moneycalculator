@@ -16,7 +16,7 @@
     "currency": "USD"
   },
   "NASA": {
-    "price": 20.53,
+    "price": 20.54,
     "currency": "USD"
   },
   "IXHL": {
@@ -32,7 +32,7 @@
     "currency": "USD"
   },
   "UBER": {
-    "price": 71.21,
+    "price": 71.2,
     "currency": "USD"
   },
   "RKLB": {
@@ -44,7 +44,7 @@
     "currency": "USD"
   },
   "PL": {
-    "price": 19.4718,
+    "price": 19.47,
     "currency": "USD"
   },
   "RDW": {
@@ -52,7 +52,7 @@
     "currency": "USD"
   },
   "BKSY": {
-    "price": 20.6,
+    "price": 20.61,
     "currency": "USD"
   },
   "ASTS": {
@@ -60,15 +60,15 @@
     "currency": "USD"
   },
   "SPIR": {
-    "price": 10.535,
+    "price": 10.54,
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63482.2617,
+    "price": 63484.9297,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1885.34,
+    "price": 1889.39,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1646.1,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-29T20:07:11.499399+00:00"
+  "updatedAt": "2026-07-29T21:46:12.055288+00:00"
 }
