@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63938.4609,
+    "price": 63903.8281,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1906.3,
+    "price": 1907.48,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -388,7 +388,7 @@
     "currency": "INR"
   },
   "ULTRACEMCO.NS": {
-    "price": 11998.0,
+    "price": 11758.0,
     "currency": "INR"
   },
   "UNIONBANK.NS": {
@@ -499,5 +499,5 @@
     "price": 1646.1,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-29T22:46:26.318789+00:00"
+  "updatedAt": "2026-07-29T23:52:26.062992+00:00"
 }
