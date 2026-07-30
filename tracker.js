@@ -766,6 +766,71 @@ function renderTagBreakdown(){
   wrap.innerHTML = html;
 }
 
+function renderIncomeCategoryTotalTable(){
+  const wrap = document.getElementById('incomeCatTotalTable');
+  const incomeTx = txInCurrentCurrency().filter(t=>t.type==='income');
+  if(incomeTx.length===0){
+    wrap.innerHTML = '<div class="empty-state">No income logged yet.</div>';
+    return;
+  }
+  const byCat = {};
+  incomeTx.forEach(t=>{ byCat[t.category] = (byCat[t.category]||0) + t.amount; });
+  const cats = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
+  const total = cats.reduce((s,c)=>s+byCat[c],0);
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Category</th><th style="text-align:right;">Total</th><th style="text-align:right;">% of income</th></tr></thead>
+      <tbody>
+  `;
+  cats.forEach(cat=>{
+    const amt = byCat[cat];
+    const pct = total>0 ? (amt/total)*100 : 0;
+    html += `
+      <tr>
+        <td>${escapeHtml(cat)}</td>
+        <td class="num">${fmtAmount(amt)}</td>
+        <td class="num">${pct.toFixed(1)}%</td>
+      </tr>
+    `;
+  });
+  html += `
+      <tr class="total-row">
+        <td>Total</td>
+        <td class="num">${fmtAmount(total)}</td>
+        <td class="num">100%</td>
+      </tr>
+    </tbody></table>
+  `;
+  wrap.innerHTML = html;
+}
+
+function renderIncomeCategoryYearTable(){
+  const wrap = document.getElementById('incomeCatYearTable');
+  const incomeTx = txInCurrentCurrency().filter(t=>t.type==='income');
+  if(incomeTx.length===0){ wrap.innerHTML = ''; return; }
+  const cats = [...new Set(incomeTx.map(t=>t.category))].sort();
+  const years = [...new Set(incomeTx.map(t=>t.date.slice(0,4)))].sort().reverse();
+
+  let html = `
+    <table class="cat-table">
+      <thead><tr><th>Year</th>${cats.map(c=>`<th style="text-align:right;">${escapeHtml(c)}</th>`).join('')}<th style="text-align:right;">Total</th></tr></thead>
+      <tbody>
+  `;
+  years.forEach(y=>{
+    const yearTx = incomeTx.filter(t=>t.date.slice(0,4)===y);
+    let yearTotal = 0;
+    const cells = cats.map(cat=>{
+      const sum = yearTx.filter(t=>t.category===cat).reduce((s,t)=>s+t.amount,0);
+      yearTotal += sum;
+      return `<td class="num">${sum>0?fmtAmount(sum):'—'}</td>`;
+    }).join('');
+    html += `<tr><td>${y}</td>${cells}<td class="num" style="font-weight:600;">${fmtAmount(yearTotal)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
 // ---------- Budget Plan ----------
 function getBudgets(){ return budgets[currentCurrency]; }
 
@@ -3769,6 +3834,7 @@ setupCollapsibleSection('chartsSectionHead','chartsArrow','chartsSectionBody','s
 setupCollapsibleSection('yearlyStatsSectionHead','yearlyStatsArrow','yearlyStatsSectionBody','spendingTracker.collapsed.yearlyStats');
 setupCollapsibleSection('monthlyCatSectionHead','monthlyCatArrow','monthlyCatSectionBody','spendingTracker.collapsed.monthlyCat');
 setupCollapsibleSection('tagBreakdownSectionHead','tagBreakdownArrow','tagBreakdownSectionBody','spendingTracker.collapsed.tagBreakdown');
+setupCollapsibleSection('incomeCatSectionHead','incomeCatArrow','incomeCatSectionBody','spendingTracker.collapsed.incomeCat');
 setupCollapsibleSection('netWorthSectionHead','netWorthArrow','netWorthSectionBody','spendingTracker.collapsed.netWorth');
 setupCollapsibleSection('yourDataSectionHead','yourDataArrow','yourDataSectionBody','spendingTracker.collapsed.yourData');
 
@@ -3799,6 +3865,8 @@ function renderAll(){
   populateMonthlyCategoryYearFilter();
   renderMonthlyCategoryTable();
   renderTagBreakdown();
+  renderIncomeCategoryTotalTable();
+  renderIncomeCategoryYearTable();
   syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
   syncSwpWithdrawals(); // same reasoning — a SWP-driven withdrawal/transfer should show up immediately too
   syncLoanEmis(); // same reasoning — a fresh EMI payment should reflect in outstanding balance right away
