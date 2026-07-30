@@ -32,7 +32,7 @@
     "currency": "USD"
   },
   "UBER": {
-    "price": 70.35,
+    "price": 70.37,
     "currency": "USD"
   },
   "RKLB": {
@@ -44,15 +44,15 @@
     "currency": "USD"
   },
   "PL": {
-    "price": 20.21,
+    "price": 20.22,
     "currency": "USD"
   },
   "RDW": {
-    "price": 8.465,
+    "price": 8.47,
     "currency": "USD"
   },
   "BKSY": {
-    "price": 22.445,
+    "price": 22.46,
     "currency": "USD"
   },
   "ASTS": {
@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64745.6992,
+    "price": 64659.6406,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1921.04,
+    "price": 1916.12,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1615.4,
     "currency": "INR"
   },
-  "updatedAt": "2026-07-30T20:10:47.642370+00:00"
+  "updatedAt": "2026-07-30T21:56:57.759435+00:00"
 }
