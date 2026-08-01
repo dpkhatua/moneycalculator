@@ -2970,12 +2970,13 @@ function buildInsuranceCard(ins, today){
   const paidThisYear = insurancePaidThisYear(ins);
   const yearlyReq = insuranceYearlyRequirement(ins);
   const neededThisYear = insuranceNeededThisYear(ins);
+  const pending = ins.pendingOccurrences||[];
 
   const card = document.createElement('div');
   card.className = 'holding-card';
   card.innerHTML = `
     <div class="hc-top">
-      <span class="status-badge ${badge}">${INS_STATUS_TEXT[badge]}</span>
+      <span class="status-badge ${pending.length>0?'due-soon':badge}">${pending.length>0?'Awaiting confirmation':INS_STATUS_TEXT[badge]}</span>
       <span class="h-name">${escapeHtml(ins.name)}</span>
       <span class="h-meta">${ins.provider?escapeHtml(ins.provider):''}</span>
     </div>
@@ -2989,6 +2990,7 @@ function buildInsuranceCard(ins, today){
       <div class="h-figure"><span class="lbl">Monthly requirement</span>${fmtAmount(insuranceMonthlyRequirement(ins))}</div>
       <div class="h-figure h-gain${neededThisYear>0?' loss':''}"><span class="lbl">Needed this year</span>${fmtAmount(neededThisYear)}</div>
     </div>
+    ${pending.length>0?`<div class="pending-box" id="inspending-${ins.id}"></div>`:''}
     <div class="h-actions">
       <button class="buy" data-action="pay">+ Pay premium</button>
       <button data-action="duedate">📅 Set next due</button>
@@ -3026,6 +3028,20 @@ function buildInsuranceCard(ins, today){
     row.appendChild(editBtn); row.appendChild(delBtn);
     logEl.appendChild(row);
   });
+
+  const pendingBox = card.querySelector('.pending-box');
+  if(pendingBox){
+    pending.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(occ=>{
+      const row = document.createElement('label');
+      row.className = 'pending-row';
+      row.innerHTML = `<input type="checkbox"><span>Confirm ${fmtAmount(occ.amount)} on ${occ.date} — adds to expenses${ins.debitAccountId?' and debits the linked account':''}</span>`;
+      row.querySelector('input').addEventListener('change', (e)=>{
+        if(e.target.checked) confirmInsurancePending(ins.id, occ.id);
+      });
+      pendingBox.appendChild(row);
+    });
+  }
+
   return card;
 }
 
@@ -3518,8 +3534,10 @@ function buildRecurringCard(r, today){
   const totalLogged = recurringTotalLogged(r);
   const isStopped = r.status==='stopped';
   const daysUntilDue = daysBetween(today, r.nextDueDate);
+  const pending = r.pendingOccurrences||[];
   let badge = 'repaid', badgeText = 'Active';
   if(isStopped){ badge='stopped'; badgeText='Stopped'; }
+  else if(pending.length>0){ badge='due-soon'; badgeText='Awaiting confirmation'; }
   else if(daysUntilDue<0){ badge='overdue'; badgeText='Overdue'; }
   else if(daysUntilDue<=3){ badge='due-soon'; badgeText='Due soon'; }
 
@@ -3538,6 +3556,7 @@ function buildRecurringCard(r, today){
       <div class="h-figure"><span class="lbl">Occurrences</span>${r.loggedTx.length}</div>
       ${!isStopped?`<div class="h-figure"><span class="lbl">Next due</span>${r.nextDueDate}</div>`:''}
     </div>
+    ${pending.length>0?`<div class="pending-box" id="recurpending-${r.id}"></div>`:''}
     <div class="h-actions">
       ${isStopped?'<button class="buy" data-action="resume">▶ Resume</button>':'<button data-action="stop">⏸ Stop</button>'}
       <button data-action="edit">✎ Edit</button>
@@ -3556,6 +3575,19 @@ function buildRecurringCard(r, today){
     el.style.display = el.style.display==='none' ? '' : 'none';
   });
   card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteRecurring(r.id));
+
+  const pendingBox = card.querySelector('.pending-box');
+  if(pendingBox){
+    pending.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(occ=>{
+      const row = document.createElement('label');
+      row.className = 'pending-row';
+      row.innerHTML = `<input type="checkbox"><span>Confirm ${fmtAmount(occ.amount)} on ${occ.date} — adds to expenses${r.debitAccountId?' and debits the linked account':''}</span>`;
+      row.querySelector('input').addEventListener('change', (e)=>{
+        if(e.target.checked) confirmRecurringOccurrence(r.id, occ.id);
+      });
+      pendingBox.appendChild(row);
+    });
+  }
 
   const logEl = card.querySelector('.h-log');
   if(r.loggedTx.length===0){
