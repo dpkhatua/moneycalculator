@@ -2813,9 +2813,14 @@ document.getElementById('addInsurance').addEventListener('click', ()=>{
   const boughtDate = document.getElementById('insBoughtDate').value || todayLocalISO();
   const premium = +document.getElementById('insPremium').value;
   const freq = +document.getElementById('insFrequency').value;
+  const debitAccountId = document.getElementById('insDebitAccount').value || null;
 
   if(!name){ alert('Give this policy a name.'); return; }
   if(!premium || premium<=0){ alert('Enter a premium amount greater than zero.'); return; }
+
+  const firstTx = { id: uid(), date: boughtDate, type:'expense', category:'Insurance', description:`Insurance premium: ${name}`, accountId: debitAccountId, amount: premium, currency: currentCurrency };
+  transactions.push(firstTx);
+  applyTxToAccount(firstTx, 1);
 
   getInsurance().push({
     id: nwUid(),
@@ -2824,9 +2829,11 @@ document.getElementById('addInsurance').addEventListener('click', ()=>{
     boughtDate,
     premiumAmount: premium,
     frequencyMonths: freq,
+    debitAccountId,
     nextDueDate: addMonthsClamped(boughtDate, freq),
     status: 'active',
-    payments: [{ id: nwUid(), date: boughtDate, amount: premium }] // first premium, paid at purchase
+    payments: [{ id: firstTx.id, date: boughtDate, amount: premium }], // first premium, paid at purchase
+    pendingOccurrences: []
   });
   saveData();
   document.getElementById('insName').value = '';
@@ -2835,6 +2842,42 @@ document.getElementById('addInsurance').addEventListener('click', ()=>{
   document.getElementById('insBoughtDate').value = todayLocalISO();
   renderInsurance();
 });
+
+// Generates a pending occurrence (awaiting your checkbox confirmation) for
+// each premium that's come due, instead of doing anything automatically.
+// Nothing is added to your expenses or debited from any account until you
+// tick the checkbox in the notification banner.
+function syncInsurancePending(){
+  const today = todayLocalISO();
+  let changed = false;
+  getInsurance().forEach(ins=>{
+    if(!ins.pendingOccurrences) ins.pendingOccurrences = [];
+    if(ins.status==='lapsed') return;
+    let guard = 0;
+    while(ins.nextDueDate<=today && guard<600){
+      ins.pendingOccurrences.push({ id: nwUid(), date: ins.nextDueDate, amount: ins.premiumAmount });
+      ins.nextDueDate = addMonthsClamped(ins.nextDueDate, ins.frequencyMonths);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+// Called when you tick the checkbox for a pending insurance premium.
+function confirmInsurancePending(insId, occId){
+  const ins = getInsurance().find(x=>x.id===insId);
+  if(!ins) return;
+  const occ = (ins.pendingOccurrences||[]).find(o=>o.id===occId);
+  if(!occ) return;
+  const tx = { id: uid(), date: occ.date, type:'expense', category:'Insurance', description:`Insurance premium: ${ins.name}`, accountId: ins.debitAccountId||null, amount: occ.amount, currency: currentCurrency };
+  transactions.push(tx);
+  applyTxToAccount(tx, 1);
+  ins.payments.push({ id: tx.id, date: occ.date, amount: occ.amount });
+  ins.pendingOccurrences = ins.pendingOccurrences.filter(o=>o.id!==occId);
+  saveData();
+  renderAll();
+}
 
 function payPremium(id){
   const ins = getInsurance().find(x=>x.id===id);
@@ -2845,10 +2888,13 @@ function payPremium(id){
   if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
   const dateRaw = prompt('Date paid (YYYY-MM-DD):', todayLocalISO());
   const date = dateRaw || todayLocalISO();
-  ins.payments.push({ id: nwUid(), date, amount: amt });
+  const tx = { id: uid(), date, type:'expense', category:'Insurance', description:`Insurance premium: ${ins.name}`, accountId: ins.debitAccountId||null, amount: amt, currency: currentCurrency };
+  transactions.push(tx);
+  applyTxToAccount(tx, 1);
+  ins.payments.push({ id: tx.id, date, amount: amt });
   ins.nextDueDate = addMonthsClamped(ins.nextDueDate, ins.frequencyMonths);
   saveData();
-  renderInsurance();
+  renderAll();
 }
 function editInsuranceInfo(id){
   const ins = getInsurance().find(x=>x.id===id);
@@ -3007,6 +3053,8 @@ function renderInsuranceSummary(){
   document.getElementById('insNeededThisYear').textContent = fmtAmount(active.reduce((s,i)=>s+insuranceNeededThisYear(i),0));
 }
 function renderInsurance(){
+  syncInsurancePending();
+  populateAccountSelect('insDebitAccount');
   renderInsuranceList();
   renderInsuranceSummary();
 }
@@ -3230,62 +3278,92 @@ function renderLoans(){
 function renderNotifications(){
   const wrap = document.getElementById('upcomingNotifications');
   const today = todayLocalISO();
-  const items = [];
+  const items = []; // plain informational reminders (no checkbox)
+  const pending = []; // awaiting your confirmation (checkbox)
 
+  // SIPs and SWP stay fully automatic — no confirmation step, just a heads-up.
   getSips().forEach(sip=>{
     if(sip.status!=='active') return;
     const days = daysBetween(today, sip.nextDueDate);
     if(days>=0 && days<=5){
-      items.push({ days, kind:'sip', text:`SIP "${sip.name}" — ${fmtAmount(sip.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${sip.nextDueDate})` });
-    }
-  });
-  getRecurring().forEach(r=>{
-    if(r.status!=='active') return;
-    const days = daysBetween(today, r.nextDueDate);
-    if(days>=0 && days<=5){
-      items.push({ days, kind:'recurring', text:`Recurring "${r.name}" — ${fmtAmount(r.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${r.nextDueDate})` });
+      items.push({ days, text:`SIP "${sip.name}" — ${fmtAmount(sip.amount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${sip.nextDueDate})` });
     }
   });
   getSwps().forEach(swp=>{
     if(swp.status!=='active') return;
     const days = daysBetween(today, swp.nextDueDate);
     if(days>=0 && days<=5){
-      items.push({ days, kind:'swp', text:`SWP "${swp.name}" — ${fmtAmount(swp.amount)} withdrawal due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${swp.nextDueDate})` });
+      items.push({ days, text:`SWP "${swp.name}" — ${fmtAmount(swp.amount)} withdrawal due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${swp.nextDueDate})` });
     }
   });
   getLoans().forEach(loan=>{
     if(loan.status!=='active') return;
     const days = daysBetween(today, loan.nextDueDate);
     if(days>=0 && days<=5){
-      items.push({ days, kind:'loan', text:`Loan "${loan.name}" — EMI ${fmtAmount(loan.emiAmount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${loan.nextDueDate})` });
-    }
-  });
-  getInsurance().forEach(ins=>{
-    if(ins.status==='lapsed') return;
-    const days = daysBetween(today, ins.nextDueDate);
-    if(days>=0 && days<=30){
-      items.push({ days, kind:'insurance', text:`Insurance "${ins.name}" premium — ${fmtAmount(ins.premiumAmount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${ins.nextDueDate})` });
+      items.push({ days, text:`Loan "${loan.name}" — EMI ${fmtAmount(loan.emiAmount)} due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${loan.nextDueDate})` });
     }
   });
   getSavingsAccounts().forEach(acc=>{
     if(!acc.lowBalanceThreshold) return;
     const balance = holdingCurrentValue(acc);
     if(balance < acc.lowBalanceThreshold){
-      items.push({ days:-1, whenLabel:'LOW', urgent:true, kind:'lowbalance', text:`"${acc.name}" balance is ${fmtAmount(balance)} — below your alert threshold of ${fmtAmount(acc.lowBalanceThreshold)}` });
+      items.push({ days:-1, whenLabel:'LOW', urgent:true, text:`"${acc.name}" balance is ${fmtAmount(balance)} — below your alert threshold of ${fmtAmount(acc.lowBalanceThreshold)}` });
     }
   });
 
-  if(items.length===0){ wrap.style.display='none'; wrap.innerHTML=''; return; }
-  items.sort((a,b)=>a.days-b.days);
-  let html = `<div class="notify-banner"><div class="notify-title">🔔 Coming up (${currentCurrency})</div>`;
-  items.forEach(item=>{
-    const soon = item.urgent || item.days>5; // only insurance items can be in the 6-30 day range
-    const whenLabel = item.whenLabel || (item.days===0 ? 'TODAY' : item.days+'d');
-    html += `<div class="notify-row"><span class="notify-when${soon?' soon':''}">${whenLabel}</span><span>${escapeHtml(item.text)}</span></div>`;
+  // Recurring expenses and insurance: upcoming ones are just a heads-up (no
+  // checkbox yet); once actually due, they wait as a pending confirmation —
+  // nothing gets added to your expenses or debited until you tick the box.
+  getRecurring().forEach(r=>{
+    if(r.status!=='active') return;
+    const days = daysBetween(today, r.nextDueDate);
+    if(days>=0 && days<=5){
+      items.push({ days, text:`Recurring "${r.name}" — ${fmtAmount(r.amount)} next due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${r.nextDueDate})` });
+    }
+    (r.pendingOccurrences||[]).forEach(occ=>{
+      pending.push({ date: occ.date, text:`Recurring "${r.name}" — ${fmtAmount(occ.amount)} on ${occ.date}`, confirm: ()=>confirmRecurringOccurrence(r.id, occ.id) });
+    });
   });
-  html += '</div>';
+  getInsurance().forEach(ins=>{
+    if(ins.status==='lapsed') return;
+    const days = daysBetween(today, ins.nextDueDate);
+    if(days>=0 && days<=30){
+      items.push({ days, text:`Insurance "${ins.name}" premium — ${fmtAmount(ins.premiumAmount)} next due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${ins.nextDueDate})` });
+    }
+    (ins.pendingOccurrences||[]).forEach(occ=>{
+      pending.push({ date: occ.date, text:`Insurance "${ins.name}" premium — ${fmtAmount(occ.amount)} on ${occ.date}`, confirm: ()=>confirmInsurancePending(ins.id, occ.id) });
+    });
+  });
+
+  if(items.length===0 && pending.length===0){ wrap.style.display='none'; wrap.innerHTML=''; return; }
+  items.sort((a,b)=>a.days-b.days);
+  pending.sort((a,b)=>a.date.localeCompare(b.date));
+
+  wrap.innerHTML = '';
+  const banner = document.createElement('div');
+  banner.className = 'notify-banner';
+  banner.innerHTML = `<div class="notify-title">🔔 Coming up (${currentCurrency})</div>`;
+
+  pending.forEach(p=>{
+    const row = document.createElement('div');
+    row.className = 'notify-row';
+    row.innerHTML = `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;width:100%;"><input type="checkbox" style="width:16px;height:16px;"><span class="notify-when">CONFIRM</span><span>${escapeHtml(p.text)} — tick to add to expenses and debit the linked account</span></label>`;
+    row.querySelector('input').addEventListener('change', (e)=>{
+      if(e.target.checked) p.confirm();
+    });
+    banner.appendChild(row);
+  });
+  items.forEach(item=>{
+    const row = document.createElement('div');
+    row.className = 'notify-row';
+    const soon = item.urgent || item.days>5;
+    const whenLabel = item.whenLabel || (item.days===0 ? 'TODAY' : item.days+'d');
+    row.innerHTML = `<span class="notify-when${soon?' soon':''}">${whenLabel}</span><span>${escapeHtml(item.text)}</span>`;
+    banner.appendChild(row);
+  });
+
+  wrap.appendChild(banner);
   wrap.style.display = '';
-  wrap.innerHTML = html;
 }
 
 // ---------- Recurring Expenses ("Definite Spending") ----------
@@ -3316,22 +3394,40 @@ function populateRecurringCategorySelect(){
 
 // Catches up any due dates that have passed, logging a real expense
 // transaction for each one — this is what makes it "automatic."
+// Generates a pending occurrence (awaiting your checkbox confirmation) for
+// each due date that's passed, instead of logging a transaction immediately.
+// Nothing is added to your expenses or debited from any account until you
+// tick the checkbox in the notification banner.
 function syncRecurringExpenses(){
   const today = todayLocalISO();
   let changed = false;
   getRecurring().forEach(r=>{
+    if(!r.pendingOccurrences) r.pendingOccurrences = [];
     if(r.status!=='active') return;
     let guard = 0;
     while(r.nextDueDate<=today && guard<600){
-      const tx = { id: uid(), date: r.nextDueDate, type:'expense', category:r.category, description:`Recurring: ${r.name}`, amount:r.amount, currency:currentCurrency };
-      transactions.push(tx);
-      r.loggedTx.push({ id: tx.id, date: r.nextDueDate, amount: r.amount });
+      r.pendingOccurrences.push({ id: nwUid(), date: r.nextDueDate, amount: r.amount });
       r.nextDueDate = advanceDate(r.nextDueDate, r.frequencyUnit, r.frequencyValue);
       changed = true;
       guard++;
     }
   });
   if(changed) saveData();
+}
+
+// Called when you tick the checkbox for a pending recurring-expense occurrence.
+function confirmRecurringOccurrence(recurId, occId){
+  const r = getRecurring().find(x=>x.id===recurId);
+  if(!r) return;
+  const occ = (r.pendingOccurrences||[]).find(o=>o.id===occId);
+  if(!occ) return;
+  const tx = { id: uid(), date: occ.date, type:'expense', category:r.category, description:`Recurring: ${r.name}`, accountId: r.debitAccountId||null, amount: occ.amount, currency: currentCurrency };
+  transactions.push(tx);
+  applyTxToAccount(tx, 1);
+  r.loggedTx.push({ id: tx.id, date: occ.date, amount: occ.amount });
+  r.pendingOccurrences = r.pendingOccurrences.filter(o=>o.id!==occId);
+  saveData();
+  renderAll();
 }
 
 document.getElementById('addRecurring').addEventListener('click', ()=>{
@@ -3341,6 +3437,7 @@ document.getElementById('addRecurring').addEventListener('click', ()=>{
   const frequencyUnit = document.getElementById('recurFrequencyType').value;
   const daysN = +document.getElementById('recurDaysN').value;
   const startDate = document.getElementById('recurStartDate').value || todayLocalISO();
+  const debitAccountId = document.getElementById('recurDebitAccount').value || null;
 
   if(!name){ alert('Give this a name.'); return; }
   if(!amount || amount<=0){ alert('Enter an amount greater than zero.'); return; }
@@ -3351,13 +3448,15 @@ document.getElementById('addRecurring').addEventListener('click', ()=>{
     name,
     amount,
     category,
+    debitAccountId,
     frequencyUnit,
     frequencyValue: frequencyUnit==='days' ? daysN : 1,
     startDate,
     status: 'active',
     stoppedDate: null,
     nextDueDate: startDate,
-    loggedTx: []
+    loggedTx: [],
+    pendingOccurrences: []
   });
   saveData();
   document.getElementById('recurName').value = '';
@@ -3494,6 +3593,7 @@ function renderRecurringSummary(){
 function renderRecurring(){
   syncRecurringExpenses();
   populateRecurringCategorySelect();
+  populateAccountSelect('recurDebitAccount');
   renderRecurringList();
   renderRecurringSummary();
   renderSummary(); // a newly-logged recurring expense affects income/expense totals too
