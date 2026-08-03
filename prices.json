@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63461.5312,
+    "price": 63065.5195,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1882.42,
+    "price": 1867.86,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -412,7 +412,7 @@
     "currency": "INR"
   },
   "DEEPAKNTR.NS": {
-    "price": 1662.2,
+    "price": 1658.1,
     "currency": "INR"
   },
   "DIXON.NS": {
@@ -499,5 +499,5 @@
     "price": 1624.2,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-02T23:48:13.240375+00:00"
+  "updatedAt": "2026-08-03T01:28:23.291685+00:00"
 }
