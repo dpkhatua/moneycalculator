@@ -32,7 +32,7 @@
     "currency": "USD"
   },
   "UBER": {
-    "price": 72.0191,
+    "price": 71.99,
     "currency": "USD"
   },
   "RKLB": {
@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64051.1914,
+    "price": 64115.0,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1868.3,
+    "price": 1869.13,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1683.4,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-04T20:17:19.552520+00:00"
+  "updatedAt": "2026-08-04T22:03:26.914769+00:00"
 }
