@@ -1,74 +1,74 @@
 {
   "AAPL": {
-    "price": 312.75,
+    "price": 312.41,
     "currency": "USD"
   },
   "MSFT": {
-    "price": 497.98,
+    "price": 499.86,
     "currency": "USD"
   },
   "NVDA": {
-    "price": 217.87,
+    "price": 218.99,
     "currency": "USD"
   },
   "AVGO": {
-    "price": 423.44,
+    "price": 420.565,
     "currency": "USD"
   },
   "NASA": {
-    "price": 24.51,
+    "price": 24.14,
     "currency": "USD"
   },
   "IXHL": {
-    "price": 3.08,
+    "price": 3.11,
     "currency": "USD"
   },
   "SMH": {
-    "price": 576.84,
+    "price": 571.48,
     "currency": "USD"
   },
   "SPCX": {
-    "price": 111.055,
+    "price": 114.92,
     "currency": "USD"
   },
   "UBER": {
-    "price": 69.385,
+    "price": 70.47,
     "currency": "USD"
   },
   "RKLB": {
-    "price": 78.22,
+    "price": 75.67,
     "currency": "USD"
   },
   "LUNR": {
-    "price": 15.09,
+    "price": 14.93,
     "currency": "USD"
   },
   "PL": {
-    "price": 23.2891,
+    "price": 22.72,
     "currency": "USD"
   },
   "RDW": {
-    "price": 12.1197,
+    "price": 11.83,
     "currency": "USD"
   },
   "BKSY": {
-    "price": 28.04,
+    "price": 27.79,
     "currency": "USD"
   },
   "ASTS": {
-    "price": 71.785,
+    "price": 67.36,
     "currency": "USD"
   },
   "SPIR": {
-    "price": 13.54,
+    "price": 13.38,
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64716.8086,
+    "price": 64158.6211,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1911.54,
+    "price": 1898.6,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -108,7 +108,7 @@
     "currency": "INR"
   },
   "BAJAJ-AUTO.NS": {
-    "price": 11607.0,
+    "price": 11620.0,
     "currency": "INR"
   },
   "BAJFINANCE.NS": {
@@ -144,7 +144,7 @@
     "currency": "INR"
   },
   "CANBK.NS": {
-    "price": 129.68,
+    "price": 131.7,
     "currency": "INR"
   },
   "CIPLA.NS": {
@@ -248,7 +248,7 @@
     "currency": "INR"
   },
   "IRCTC.NS": {
-    "price": 519.7,
+    "price": 520.45,
     "currency": "INR"
   },
   "ITC.NS": {
@@ -280,7 +280,7 @@
     "currency": "INR"
   },
   "M&M.NS": {
-    "price": 3421.3,
+    "price": 3406.0,
     "currency": "INR"
   },
   "MARICO.NS": {
@@ -288,7 +288,7 @@
     "currency": "INR"
   },
   "MARUTI.NS": {
-    "price": 14080.0,
+    "price": 13940.0,
     "currency": "INR"
   },
   "MOTHERSON.NS": {
@@ -304,7 +304,7 @@
     "currency": "INR"
   },
   "ONGC.NS": {
-    "price": 236.93,
+    "price": 237.8,
     "currency": "INR"
   },
   "PAYTM.NS": {
@@ -344,7 +344,7 @@
     "currency": "INR"
   },
   "SIEMENS.NS": {
-    "price": 3964.3,
+    "price": 3952.0,
     "currency": "INR"
   },
   "SUNPHARMA.NS": {
@@ -499,5 +499,5 @@
     "price": 1734.6,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-06T15:05:51.421120+00:00"
+  "updatedAt": "2026-08-06T23:47:07.598679+00:00"
 }
