@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 65153.6914,
+    "price": 65166.0195,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1920.45,
+    "price": 1920.88,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -440,7 +440,7 @@
     "currency": "INR"
   },
   "JIOFIN.NS": {
-    "price": 256.8,
+    "price": 256.2,
     "currency": "INR"
   },
   "KPITTECH.NS": {
@@ -499,5 +499,5 @@
     "price": 1721.1,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-09T18:22:09.438568+00:00"
+  "updatedAt": "2026-08-09T19:24:26.668884+00:00"
 }
