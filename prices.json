@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63524.6289,
+    "price": 63679.7188,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1879.09,
+    "price": 1881.1,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -444,7 +444,7 @@
     "currency": "INR"
   },
   "KPITTECH.NS": {
-    "price": 627.0,
+    "price": 621.75,
     "currency": "INR"
   },
   "KWIL.NS": {
@@ -499,5 +499,5 @@
     "price": 1819.8,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-11T23:28:15.677596+00:00"
+  "updatedAt": "2026-08-12T00:55:02.735677+00:00"
 }
