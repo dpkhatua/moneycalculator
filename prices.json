@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63431.9883,
+    "price": 63310.0,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1878.12,
+    "price": 1874.27,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -124,7 +124,7 @@
     "currency": "INR"
   },
   "BEL.NS": {
-    "price": 405.7,
+    "price": 405.15,
     "currency": "INR"
   },
   "BHARTIARTL.NS": {
@@ -180,7 +180,7 @@
     "currency": "INR"
   },
   "GODREJCP.NS": {
-    "price": 910.0,
+    "price": 905.0,
     "currency": "INR"
   },
   "GRASIM.NS": {
@@ -499,5 +499,5 @@
     "price": 1824.3,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-12T22:28:24.177953+00:00"
+  "updatedAt": "2026-08-12T23:28:48.425799+00:00"
 }
