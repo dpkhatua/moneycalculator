@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63466.9297,
+    "price": 63494.3984,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1886.6801,
+    "price": 1885.6899,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -188,7 +188,7 @@
     "currency": "INR"
   },
   "HAL.NS": {
-    "price": 4945.0,
+    "price": 4935.0,
     "currency": "INR"
   },
   "HAVELLS.NS": {
@@ -499,5 +499,5 @@
     "price": 1831.8,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-14T00:56:07.056420+00:00"
+  "updatedAt": "2026-08-14T03:19:09.423014+00:00"
 }
