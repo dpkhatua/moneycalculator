@@ -65,6 +65,53 @@ function adjustCashAccountInCurrency(cur, holdingId, amount){
   return true;
 }
 
+function getCreditCards(){ return getNW().creditCards; }
+// A charge increases what you owe (opposite of a bank debit, which decreases
+// what you have) — this is the whole difference between an account and a card.
+function chargeCreditCard(cardId, amount){
+  const c = getCreditCards().find(x=>x.id===cardId);
+  if(!c) return false;
+  c.currentDue = (c.currentDue||0) + amount;
+  return true;
+}
+function unchargeCreditCard(cardId, amount){ return chargeCreditCard(cardId, -amount); }
+
+// The transaction form's "Paid via" dropdown offers both accounts (debit) and
+// credit cards (charge) in one list, prefixed so we know which is which.
+function populateTxPaymentSelect(){
+  const sel = document.getElementById('txAccount');
+  const prevValue = sel.value;
+  const accounts = getSavingsAccounts();
+  const cards = getCreditCards();
+  let html = `<option value="">— none / untracked —</option>`;
+  if(accounts.length>0){
+    html += `<optgroup label="Accounts">${accounts.map(a=>`<option value="acct:${a.id}">${escapeHtml(a.name)}</option>`).join('')}</optgroup>`;
+  }
+  if(cards.length>0){
+    html += `<optgroup label="Credit Cards">${cards.map(c=>`<option value="card:${c.id}">${escapeHtml(c.name)}</option>`).join('')}</optgroup>`;
+  }
+  html += `<option value="__add_new_account__">+ Add new account…</option><option value="__add_new_card__">+ Add new credit card…</option>`;
+  sel.innerHTML = html;
+  if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
+}
+
+// Applies (direction=+1) or reverses (direction=-1) a transaction's effect on
+// whichever payment method it's tagged with — debits a bank account, or
+// charges/uncharges a credit card. Handles both the old accountId-only shape
+// and the new prefixed paymentMethod shape for backward compatibility.
+function applyTxToPaymentMethod(tx, direction){
+  if(!tx) return;
+  if(tx.creditCardId){
+    const delta = tx.amount * direction; // expenses on a card always increase what's owed
+    chargeCreditCard(tx.creditCardId, tx.type==='expense' ? delta : -delta);
+    return;
+  }
+  applyTxToAccount(tx, direction);
+}
+
+
+// Same as before, but works for any select element — used by SIP/Loan/
+// Remittance/Recurring "debit from" dropdowns (never shows "+ Add new…").
 function populateAccountSelect(selectId, includeNoneLabel, currencyOverride){
   const sel = document.getElementById(selectId);
   if(!sel) return;
@@ -74,6 +121,61 @@ function populateAccountSelect(selectId, includeNoneLabel, currencyOverride){
     accounts.map(a=>`<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
   if(prevValue && [...sel.options].some(o=>o.value===prevValue)) sel.value = prevValue;
 }
+
+// Creates a bare-bones account (a Savings-class holding) directly — no need
+// to go through the full Add Holding form just to name a bank account.
+function createQuickAccount(name, openingBalance){
+  const h = {
+    id: nwUid(), assetClass:'savings', name, ticker:null, note:null,
+    currentPrice: openingBalance,
+    lots: [{ id: nwUid(), date: todayLocalISO(), quantity:1, price: openingBalance }],
+    sells: [],
+    investmentLog: [{ id: nwUid(), date: todayLocalISO(), amount: openingBalance, note: null }]
+  };
+  getNW().holdings.push(h);
+  return h;
+}
+
+function createQuickCreditCard(name, dueDate){
+  const c = {
+    id: nwUid(), name, issuer:null, currentDue:0,
+    nextDueDate: dueDate || addMonthsClamped(todayLocalISO(), 1),
+    status:'active', payments:[], pendingOccurrences:[]
+  };
+  getCreditCards().push(c);
+  return c;
+}
+
+// The transaction form's Account dropdown gets its own populate function so
+// it can offer "+ Add new account…" inline — no pre-made accounts exist
+// until you create one this way (or via Net Worth).
+document.getElementById('txAccount').addEventListener('change', (e)=>{
+  if(e.target.value === '__add_new_account__'){
+    const name = prompt('New account name (e.g. "Checking", "HDFC Savings"):');
+    if(name && name.trim()){
+      const balRaw = prompt(`Starting balance for "${name.trim()}":`, '0');
+      const balance = balRaw===null ? 0 : (+balRaw || 0);
+      const h = createQuickAccount(name.trim(), balance);
+      saveData();
+      populateTxPaymentSelect();
+      e.target.value = 'acct:'+h.id;
+      renderNetWorth();
+    } else {
+      populateTxPaymentSelect();
+    }
+  } else if(e.target.value === '__add_new_card__'){
+    const name = prompt('New credit card name (e.g. "HDFC Regalia"):');
+    if(name && name.trim()){
+      const c = createQuickCreditCard(name.trim());
+      saveData();
+      populateTxPaymentSelect();
+      e.target.value = 'card:'+c.id;
+      renderCreditCards();
+    } else {
+      populateTxPaymentSelect();
+    }
+  }
+});
 
 
 function emptyNetWorthBucket(){
@@ -86,7 +188,8 @@ function emptyNetWorthBucket(){
     recurringExpenses: [], // "definite spending" — fixed bills that auto-log as real expenses on schedule
     swps: [], // Systematic Withdrawal (and optional transfer-into-SIP): auto-withdraws from one holding, optionally auto-invests into another
     wealthSnapshots: [], // { month:'YYYY-MM', netWorth, investedValue, currentValue } — one entry per month, refreshed each time you open the tracker that month. Can't be reconstructed for months before this feature existed, since past market values were never recorded.
-    loansTaken: [] // any loan you've borrowed (home/car/personal/etc.) — EMI auto-logs on schedule; outstanding balance counts as a liability in net worth
+    loansTaken: [], // any loan you've borrowed (home/car/personal/etc.) — EMI auto-logs on schedule; outstanding balance counts as a liability in net worth
+    creditCards: [] // charges tagged to a card increase its due; outstanding due counts as a liability in net worth
   };
 }
 
@@ -358,6 +461,37 @@ function renderCategoryManagement(){
   });
 }
 
+document.getElementById('addQuickAccount').addEventListener('click', ()=>{
+  const name = document.getElementById('quickAccountName').value.trim();
+  const balRaw = document.getElementById('quickAccountBalance').value;
+  if(!name){ alert('Enter an account name.'); return; }
+  const balance = balRaw==='' ? 0 : (+balRaw || 0);
+  createQuickAccount(name, balance);
+  saveData();
+  document.getElementById('quickAccountName').value = '';
+  document.getElementById('quickAccountBalance').value = '';
+  renderAll();
+});
+
+function renderAccountManagement(){
+  const wrap = document.getElementById('manageAccountsList');
+  const accounts = getSavingsAccounts();
+  if(accounts.length===0){ wrap.innerHTML = '<div class="empty-state">No accounts yet — add one above.</div>'; return; }
+  wrap.innerHTML = '';
+  accounts.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(a=>{
+    const usedByTx = transactions.filter(t=>t.accountId===a.id).length;
+    const row = document.createElement('div');
+    row.className = 'cat-chip-row';
+    row.innerHTML = `<span class="cat-chip-name">${escapeHtml(a.name)} — ${fmtAmount(holdingCurrentValue(a))}</span><span class="cat-chip-count">${usedByTx>0?usedByTx+' transaction(s)':''}</span>`;
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×';
+    delBtn.title = 'Delete this account';
+    delBtn.addEventListener('click', ()=>deleteHolding(a.id));
+    row.appendChild(delBtn);
+    wrap.appendChild(row);
+  });
+}
+
 function setType(type){
   currentType = type;
   document.getElementById('typeExpenseBtn').classList.toggle('active', type==='expense');
@@ -388,12 +522,26 @@ function applyTxToAccount(tx, direction){
   adjustCashAccount(tx.accountId, delta);
 }
 
+// Parses the "Paid via" dropdown's prefixed value ("acct:xxx" or "card:xxx")
+// into the pair of fields a transaction actually stores.
+function parsePaymentSelectValue(raw){
+  if(!raw) return { accountId:null, creditCardId:null };
+  if(raw.startsWith('acct:')) return { accountId: raw.slice(5), creditCardId:null };
+  if(raw.startsWith('card:')) return { accountId:null, creditCardId: raw.slice(5) };
+  return { accountId:null, creditCardId:null }; // ignores stray __add_new_*__ values, shouldn't reach here
+}
+function paymentSelectValueFor(tx){
+  if(tx.creditCardId) return 'card:'+tx.creditCardId;
+  if(tx.accountId) return 'acct:'+tx.accountId;
+  return '';
+}
+
 document.getElementById('txSubmit').addEventListener('click', ()=>{
   const date = document.getElementById('txDate').value;
   const category = document.getElementById('txCategory').value;
   const desc = document.getElementById('txDesc').value.trim();
   const tag = document.getElementById('txTag').value.trim();
-  const accountId = document.getElementById('txAccount').value || null;
+  const { accountId, creditCardId } = parsePaymentSelectValue(document.getElementById('txAccount').value);
   const amount = +document.getElementById('txAmount').value;
 
   if(!date){ alert('Pick a date.'); return; }
@@ -403,14 +551,14 @@ document.getElementById('txSubmit').addEventListener('click', ()=>{
   if(editingId){
     const tx = transactions.find(t=>t.id===editingId);
     if(tx){
-      applyTxToAccount(tx, -1); // undo whatever the old version did to its account
-      Object.assign(tx, {date, type:currentType, category, description:desc, tag:tag||null, accountId, amount, currency:currentCurrency});
-      applyTxToAccount(tx, 1); // apply the new version's effect
+      applyTxToPaymentMethod(tx, -1); // undo whatever the old version did
+      Object.assign(tx, {date, type:currentType, category, description:desc, tag:tag||null, accountId, creditCardId, amount, currency:currentCurrency});
+      applyTxToPaymentMethod(tx, 1); // apply the new version's effect
     }
   } else {
-    const tx = { id: uid(), date, type: currentType, category, description: desc, tag: tag||null, accountId, amount, currency: currentCurrency };
+    const tx = { id: uid(), date, type: currentType, category, description: desc, tag: tag||null, accountId, creditCardId, amount, currency: currentCurrency };
     transactions.push(tx);
-    applyTxToAccount(tx, 1);
+    applyTxToPaymentMethod(tx, 1);
   }
   saveData();
   resetForm();
@@ -425,7 +573,8 @@ function startEdit(id){
   document.getElementById('txDate').value = tx.date;
   document.getElementById('txDesc').value = tx.description;
   document.getElementById('txTag').value = tx.tag || '';
-  document.getElementById('txAccount').value = tx.accountId || '';
+  populateTxPaymentSelect();
+  document.getElementById('txAccount').value = paymentSelectValueFor(tx);
   document.getElementById('txAmount').value = tx.amount;
   populateCategorySelect();
   document.getElementById('txCategory').value = tx.category;
@@ -436,7 +585,7 @@ function startEdit(id){
 function deleteTx(id){
   if(!confirm('Delete this transaction? This can\'t be undone.')) return;
   const tx = transactions.find(t=>t.id===id);
-  if(tx) applyTxToAccount(tx, -1); // undo its effect on the linked account, if any
+  if(tx) applyTxToPaymentMethod(tx, -1); // undo its effect on the linked account/card, if any
   markDeleted(id);
   transactions = transactions.filter(t=>t.id!==id);
   saveData();
@@ -1269,6 +1418,8 @@ function deleteHolding(id){
   getNW().holdings = getNW().holdings.filter(x=>x.id!==id);
   saveData();
   renderNetWorth();
+  renderAccountManagement(); // in case this was a savings account, keep the accounts list/dropdown in sync
+  populateTxPaymentSelect();
 }
 
 function toggleHoldingLog(id){
@@ -1926,7 +2077,8 @@ function renderNWSummary(investmentValue){
   if(investmentValue===undefined) investmentValue = nw.holdings.reduce((s,h)=>s+holdingCurrentValue(h),0);
   const flatLiabilities = nw.liabilities.homeLoan + nw.liabilities.carLoan + nw.liabilities.ccDebt + nw.liabilities.personalLoan + nw.liabilities.otherLiability;
   const loanLiabilities = (nw.loansTaken||[]).filter(l=>l.status==='active').reduce((s,l)=>s+loanOutstanding(l),0);
-  const liabilities = flatLiabilities + loanLiabilities;
+  const ccLiabilities = (nw.creditCards||[]).filter(c=>c.status==='active').reduce((s,c)=>s+c.currentDue,0);
+  const liabilities = flatLiabilities + loanLiabilities + ccLiabilities;
   const grandTotal = investmentValue - liabilities;
 
   document.getElementById('nwInvestValue').textContent = fmtAmount(investmentValue);
@@ -3288,6 +3440,228 @@ function renderLoans(){
   renderNWSummary(); // outstanding loan balance affects net worth's liabilities total
 }
 
+// ---------- Credit Card Bills ----------
+// Charges tagged to a card in the transaction form increase currentDue
+// automatically (see applyTxToPaymentMethod). On the due date, a pending
+// confirmation appears — same pattern as Recurring/Insurance — and nothing
+// is marked paid until you tick the checkbox.
+function ccTotalPaidAllTime(c){ return c.payments.reduce((s,p)=>s+p.amount,0); }
+
+document.getElementById('addCreditCard').addEventListener('click', ()=>{
+  const name = document.getElementById('ccName').value.trim();
+  const issuer = document.getElementById('ccIssuer').value.trim();
+  const nextDueDate = document.getElementById('ccNextDueDate').value || addMonthsClamped(todayLocalISO(), 1);
+  if(!name){ alert('Give this card a name.'); return; }
+
+  getCreditCards().push({
+    id: nwUid(), name, issuer: issuer||null, currentDue: 0,
+    nextDueDate, status:'active', payments:[], pendingOccurrences:[]
+  });
+  saveData();
+  document.getElementById('ccName').value = '';
+  document.getElementById('ccIssuer').value = '';
+  document.getElementById('ccNextDueDate').value = '';
+  renderCreditCards();
+});
+
+// Generates a pending occurrence on the due date, snapshotting whatever is
+// currently owed at that moment — new charges after that keep accumulating
+// separately in currentDue and will show up as the next month's due.
+function syncCreditCardDue(){
+  const today = todayLocalISO();
+  let changed = false;
+  getCreditCards().forEach(c=>{
+    if(!c.pendingOccurrences) c.pendingOccurrences = [];
+    if(c.status!=='active') return;
+    let guard = 0;
+    while(c.nextDueDate<=today && guard<12){
+      if(c.currentDue>0.01){
+        c.pendingOccurrences.push({ id: nwUid(), date: c.nextDueDate, amount: c.currentDue });
+      }
+      c.nextDueDate = addMonthsClamped(c.nextDueDate, 1);
+      changed = true;
+      guard++;
+    }
+  });
+  if(changed) saveData();
+}
+
+// Called when you tick the checkbox for a pending credit card due.
+function confirmCreditCardPending(cardId, occId){
+  const c = getCreditCards().find(x=>x.id===cardId);
+  if(!c) return;
+  const occ = (c.pendingOccurrences||[]).find(o=>o.id===occId);
+  if(!occ) return;
+  c.payments.push({ id: nwUid(), date: occ.date, amount: occ.amount });
+  c.currentDue = Math.max(0, c.currentDue - occ.amount);
+  c.pendingOccurrences = c.pendingOccurrences.filter(o=>o.id!==occId);
+  saveData();
+  renderAll();
+}
+
+function payCreditCardNow(id){
+  const c = getCreditCards().find(x=>x.id===id);
+  if(!c) return;
+  const amtRaw = prompt(`Payment for "${c.name}" (currently due: ${fmtAmount(c.currentDue)}):`, c.currentDue);
+  if(!amtRaw) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date paid (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  c.payments.push({ id: nwUid(), date, amount: amt });
+  c.currentDue = Math.max(0, c.currentDue - amt);
+  saveData();
+  renderAll();
+}
+function editCreditCardInfo(id){
+  const c = getCreditCards().find(x=>x.id===id);
+  if(!c) return;
+  const newName = prompt('Name:', c.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const newIssuer = prompt('Issuer:', c.issuer||'');
+  if(newIssuer===null) return;
+  c.name = newName.trim();
+  c.issuer = newIssuer.trim() || null;
+  saveData();
+  renderCreditCards();
+}
+function setCreditCardDueDate(id){
+  const c = getCreditCards().find(x=>x.id===id);
+  if(!c) return;
+  const raw = prompt('Next due date (YYYY-MM-DD):', c.nextDueDate);
+  if(raw===null) return;
+  if(raw) c.nextDueDate = raw;
+  saveData();
+  renderCreditCards();
+}
+function toggleCreditCardClosed(id){
+  const c = getCreditCards().find(x=>x.id===id);
+  if(!c) return;
+  c.status = c.status==='closed' ? 'active' : 'closed';
+  if(c.status==='active' && c.nextDueDate<todayLocalISO()) c.nextDueDate = todayLocalISO();
+  saveData();
+  renderCreditCards();
+}
+function deleteCreditCardPayment(cardId, payId){
+  const c = getCreditCards().find(x=>x.id===cardId);
+  if(!c) return;
+  if(!confirm('Delete this payment entry? (This does not restore the due amount it cleared.)')) return;
+  c.payments = c.payments.filter(x=>x.id!==payId);
+  saveData();
+  renderCreditCards();
+}
+function deleteCreditCard(id){
+  const c = getCreditCards().find(x=>x.id===id);
+  if(!c) return;
+  if(!confirm(`Delete "${c.name}" entirely, including its payment history? This can't be undone.`)) return;
+  markDeleted(id);
+  getNW().creditCards = getCreditCards().filter(x=>x.id!==id);
+  saveData();
+  renderCreditCards();
+}
+
+function buildCreditCardCard(c){
+  const totalPaid = ccTotalPaidAllTime(c);
+  const isClosed = c.status==='closed';
+  const pending = c.pendingOccurrences||[];
+  let badge = 'repaid', badgeText = 'Active';
+  if(isClosed){ badge='stopped'; badgeText='Closed'; }
+  else if(pending.length>0){ badge='due-soon'; badgeText='Awaiting confirmation'; }
+  else if(c.currentDue>0.01){ badge='outstanding'; badgeText='Due building up'; }
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${badge}">${badgeText}</span>
+      <span class="h-name">${escapeHtml(c.name)}</span>
+      <span class="h-meta">${c.issuer?escapeHtml(c.issuer):''}</span>
+    </div>
+    <div class="hc-stats">
+      <div class="h-figure h-gain loss"><span class="lbl">Current due</span>${fmtAmount(c.currentDue)}</div>
+      <div class="h-figure"><span class="lbl">Total paid</span>${fmtAmount(totalPaid)}</div>
+      ${!isClosed?`<div class="h-figure"><span class="lbl">Next due date</span>${c.nextDueDate}</div>`:''}
+    </div>
+    ${pending.length>0?`<div class="pending-box" id="ccpending-${c.id}"></div>`:''}
+    <div class="h-actions">
+      <button class="buy" data-action="pay" ${c.currentDue<=0?'disabled':''}>+ Pay now</button>
+      <button data-action="duedate">📅 Set next due</button>
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="toggle">${isClosed?'▶ Reopen':'✓ Mark closed'}</button>
+      <button data-action="log">☰ Payments</button>
+      <button data-action="del">× Delete</button>
+    </div>
+    <div class="h-log" id="cclog-${c.id}" style="display:none;"></div>
+  `;
+  const payBtn = card.querySelector('[data-action=pay]');
+  if(c.currentDue>0) payBtn.addEventListener('click', ()=>payCreditCardNow(c.id));
+  card.querySelector('[data-action=duedate]').addEventListener('click', ()=>setCreditCardDueDate(c.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editCreditCardInfo(c.id));
+  card.querySelector('[data-action=toggle]').addEventListener('click', ()=>toggleCreditCardClosed(c.id));
+  card.querySelector('[data-action=log]').addEventListener('click', ()=>{
+    const el = document.getElementById('cclog-'+c.id);
+    el.style.display = el.style.display==='none' ? '' : 'none';
+  });
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteCreditCard(c.id));
+
+  const logEl = card.querySelector('.h-log');
+  if(c.payments.length===0){
+    logEl.innerHTML = '<span style="color:var(--ink-soft);">No payments logged yet.</span>';
+  }
+  c.payments.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    row.innerHTML = `<span>Paid ${fmtAmount(p.amount)} on ${p.date}</span>`;
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+    delBtn.addEventListener('click', ()=>deleteCreditCardPayment(c.id, p.id));
+    row.appendChild(delBtn);
+    logEl.appendChild(row);
+  });
+
+  const pendingBox = card.querySelector('.pending-box');
+  if(pendingBox){
+    pending.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(occ=>{
+      const row = document.createElement('label');
+      row.className = 'pending-row';
+      row.innerHTML = `<input type="checkbox"><span>Confirm payment of ${fmtAmount(occ.amount)} for the bill due ${occ.date} — clears this from what's owed</span>`;
+      row.querySelector('input').addEventListener('change', (e)=>{
+        if(e.target.checked) confirmCreditCardPending(c.id, occ.id);
+      });
+      pendingBox.appendChild(row);
+    });
+  }
+
+  return card;
+}
+
+function renderCreditCardsList(){
+  const wrap = document.getElementById('ccList');
+  const cards = getCreditCards();
+  if(cards.length===0){
+    wrap.innerHTML = '<div class="empty-state">No credit cards logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  cards.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(c=>wrap.appendChild(buildCreditCardCard(c)));
+}
+function renderCreditCardsSummary(){
+  const cards = getCreditCards();
+  const active = cards.filter(c=>c.status==='active');
+  document.getElementById('ccActiveCount').textContent = active.length;
+  document.getElementById('ccTotalDue').textContent = fmtAmount(active.reduce((s,c)=>s+c.currentDue,0));
+  document.getElementById('ccTotalPaid').textContent = fmtAmount(cards.reduce((s,c)=>s+ccTotalPaidAllTime(c),0));
+}
+function renderCreditCards(){
+  syncCreditCardDue();
+  renderCreditCardsList();
+  renderCreditCardsSummary();
+  renderNWSummary(); // outstanding card dues affect net worth's liabilities total
+}
+
 // ---------- Upcoming due-date notifications ----------
 // SIPs and recurring expenses: warn 5 days out. Insurance: warn a full month
 // out, since premiums are usually bigger and less convenient to scramble for.
@@ -3348,6 +3722,16 @@ function renderNotifications(){
     }
     (ins.pendingOccurrences||[]).forEach(occ=>{
       pending.push({ date: occ.date, text:`Insurance "${ins.name}" premium — ${fmtAmount(occ.amount)} on ${occ.date}`, confirm: ()=>confirmInsurancePending(ins.id, occ.id) });
+    });
+  });
+  getCreditCards().forEach(c=>{
+    if(c.status!=='active') return;
+    const days = daysBetween(today, c.nextDueDate);
+    if(days>=0 && days<=5 && c.currentDue>0.01){
+      items.push({ days, text:`Credit card "${c.name}" — ${fmtAmount(c.currentDue)} bill next due ${days===0?'today':'in '+days+' day'+(days===1?'':'s')} (${c.nextDueDate})` });
+    }
+    (c.pendingOccurrences||[]).forEach(occ=>{
+      pending.push({ date: occ.date, text:`Credit card "${c.name}" — ${fmtAmount(occ.amount)} bill due ${occ.date}`, confirm: ()=>confirmCreditCardPending(c.id, occ.id) });
     });
   });
 
@@ -3959,6 +4343,7 @@ setupCollapsibleSection('manageCatSectionHead','manageCatArrow','manageCatSectio
 setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendingTracker.collapsed.sips');
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
 setupCollapsibleSection('loansSectionHead','loansArrow','loansSectionBody','spendingTracker.collapsed.loans');
+setupCollapsibleSection('ccSectionHead','ccArrow','ccSectionBody','spendingTracker.collapsed.cc');
 setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
 setupCollapsibleSection('swpSectionHead','swpArrow','swpSectionBody','spendingTracker.collapsed.swp');
 setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
@@ -3985,8 +4370,9 @@ function renderAll(){
   populateMonthFilter();
   populateCategoryFilter();
   populateTagFilter();
-  populateAccountSelect('txAccount');
+  populateTxPaymentSelect();
   renderCategoryManagement();
+  renderAccountManagement();
   syncRecurringExpenses(); // before the transaction-dependent renders below, so a fresh auto-logged expense shows up right away
   renderSummary();
   renderList();
@@ -4002,6 +4388,7 @@ function renderAll(){
   syncSipInstallments(); // before renderNetWorth, so a SIP-driven buy shows up in the holdings list right away
   syncSwpWithdrawals(); // same reasoning — a SWP-driven withdrawal/transfer should show up immediately too
   syncLoanEmis(); // same reasoning — a fresh EMI payment should reflect in outstanding balance right away
+  syncCreditCardDue(); // same reasoning — a due-date snapshot should be ready before notifications render
   renderNetWorth();
   renderLending();
   renderRemit();
@@ -4010,6 +4397,7 @@ function renderAll(){
   renderRecurring();
   renderSwps();
   renderLoans();
+  renderCreditCards();
   renderNotifications();
 }
 
@@ -4117,6 +4505,10 @@ function mergeNetWorthFromBackup(incomingNW, preferIncoming){
     if(Array.isArray(incomingBucket.loansTaken)){
       if(!localBucket.loansTaken) localBucket.loansTaken = [];
       mergeArrayById(localBucket.loansTaken, incomingBucket.loansTaken, preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.creditCards)){
+      if(!localBucket.creditCards) localBucket.creditCards = [];
+      mergeArrayById(localBucket.creditCards, incomingBucket.creditCards, preferIncoming);
     }
     if(Array.isArray(incomingBucket.wealthSnapshots)){
       if(!localBucket.wealthSnapshots) localBucket.wealthSnapshots = [];
@@ -4455,6 +4847,7 @@ document.getElementById('recurStartDate').value = todayLocalISO();
 document.getElementById('swpStartDate').value = todayLocalISO();
 document.getElementById('remitDate').value = todayLocalISO();
 document.getElementById('loanStartDate').value = todayLocalISO();
+document.getElementById('ccNextDueDate').value = addMonthsClamped(todayLocalISO(), 1);
 renderAll();
 checkBackupReminder();
 
