@@ -651,6 +651,7 @@
     </div>
     <div class="chart-col">
       <div class="nw-subhead">Liabilities</div>
+      <p class="section-desc" style="margin-top:0;">If you're using the "Loans taken" or "Credit card bills" sections below for detailed tracking, leave the matching field here at 0 — both already count toward your liabilities automatically, so entering it here too would double-count it.</p>
       <div class="field-2col">
         <div class="field"><label>Home loan</label><input type="number" id="nwHomeLoan" min="0" step="1000" value="0"></div>
         <div class="field"><label>Car loan</label><input type="number" id="nwCarLoan" min="0" step="1000" value="0"></div>
@@ -971,6 +972,43 @@
   <div class="holding-list" id="loansList" style="margin-bottom:44px;"></div>
   </div>
 
+  <!-- Credit Card Bills -->
+  <div class="section-head collapsible" id="ccSectionHead"><h2><span class="section-arrow" id="ccArrow">▾</span>Credit card bills</h2></div>
+  <div id="ccSectionBody">
+  <p class="section-desc">Tag expenses to a card (in the "Paid via" field when logging a transaction) and the charge adds to what's due here automatically. On the due date, a checkbox appears — same as Recurring/Insurance — nothing is marked paid until you tick it. The outstanding due counts as a liability in your net worth.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add a credit card</div>
+      <div class="holding-form">
+        <div>
+          <label>Name</label>
+          <input type="text" id="ccName" placeholder="e.g. HDFC Regalia" maxlength="80">
+        </div>
+        <div>
+          <label>Issuer <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <input type="text" id="ccIssuer" placeholder="e.g. HDFC Bank" maxlength="80">
+        </div>
+        <div>
+          <label>Next due date</label>
+          <input type="date" id="ccNextDueDate">
+        </div>
+        <div>
+          <button class="btn-primary" id="addCreditCard" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Cards</div><div class="val" id="ccActiveCount">0</div></div>
+    <div class="t"><div class="lbl">Total due now</div><div class="val brick" id="ccTotalDue">0</div></div>
+    <div class="t"><div class="lbl">Total paid (all-time)</div><div class="val" id="ccTotalPaid">0</div></div>
+  </div>
+
+  <div class="holding-list" id="ccList" style="margin-bottom:44px;"></div>
+  </div>
+
   <!-- Recurring Expenses -->
   <div class="section-head collapsible" id="recurringSectionHead"><h2><span class="section-arrow" id="recurringArrow">▾</span>Recurring expenses</h2></div>
   <div id="recurringSectionBody">
@@ -1080,11 +1118,11 @@
   <div class="holding-list" id="swpList" style="margin-bottom:44px;"></div>
   </div>
 
-  <!-- Manage Categories -->
-  <div class="section-head collapsible" id="manageCatSectionHead"><h2><span class="section-arrow" id="manageCatArrow">▾</span>Manage categories</h2></div>
+  <!-- Manage Categories & Accounts -->
+  <div class="section-head collapsible" id="manageCatSectionHead"><h2><span class="section-arrow" id="manageCatArrow">▾</span>Manage categories &amp; accounts</h2></div>
   <div id="manageCatSectionBody">
-  <p class="section-desc">Remove ones you don't need. This only affects new transactions — anything already logged keeps its category label, and any budget you'd set for it is removed along with it.</p>
-  <div class="tracker-grid" style="margin-bottom:44px;">
+  <p class="section-desc">Remove ones you don't need. This only affects new transactions — anything already logged keeps its category/account label, and any budget set for a removed category is removed along with it.</p>
+  <div class="tracker-grid" style="margin-bottom:20px;">
     <div class="form-col">
       <div class="nw-subhead">Expense categories</div>
       <div id="manageExpenseCategories"></div>
@@ -1094,6 +1132,14 @@
       <div id="manageIncomeCategories"></div>
     </div>
   </div>
+  <div class="nw-subhead">Accounts (this currency)</div>
+  <p class="section-desc" style="margin-top:-8px;">There are no accounts until you add one — either here, or with "+ Add new account…" right in the transaction form. Removing one here permanently deletes it (same as deleting it from Net Worth) — anything already logged that used it keeps that record untouched, it just won't be offered for new ones.</p>
+  <div class="setup-row" style="margin-bottom:14px;">
+    <input type="text" id="quickAccountName" placeholder="New account name">
+    <input type="number" id="quickAccountBalance" placeholder="Starting balance" min="0" step="1" style="max-width:160px;">
+    <button class="btn-secondary" id="addQuickAccount">+ Add account</button>
+  </div>
+  <div id="manageAccountsList" style="margin-bottom:44px;"></div>
   </div>
 
   <!-- Data management -->
