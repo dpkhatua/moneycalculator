@@ -3513,6 +3513,44 @@ function payCreditCardNow(id){
   saveData();
   renderAll();
 }
+
+// For adding a payment record directly — e.g. restoring one you accidentally
+// deleted. Unlike "+ Pay now", this asks first whether it should also reduce
+// what's currently due, since a restored record's balance effect may have
+// already happened (and reducing it again would double-count).
+function logCreditCardPayment(id){
+  const c = getCreditCards().find(x=>x.id===id);
+  if(!c) return;
+  const amtRaw = prompt(`Amount for this payment record on "${c.name}":`);
+  if(!amtRaw) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date paid (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  const alsoReduce = confirm('Should this also reduce the current due?\n\nClick OK if this is a genuinely new payment.\nClick Cancel if you\'re just restoring a record for a payment that already reduced the due before (e.g. one you accidentally deleted) — this avoids counting it twice.');
+  c.payments.push({ id: nwUid(), date, amount: amt });
+  if(alsoReduce) c.currentDue = Math.max(0, c.currentDue - amt);
+  saveData();
+  renderAll();
+}
+
+function editCreditCardPayment(cardId, payId){
+  const c = getCreditCards().find(x=>x.id===cardId);
+  if(!c) return;
+  const p = c.payments.find(x=>x.id===payId);
+  if(!p) return;
+  const amtRaw = prompt('Amount:', p.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', p.date);
+  if(dateRaw===null) return;
+  p.amount = amt;
+  p.date = dateRaw || p.date;
+  saveData();
+  renderCreditCards();
+}
+
 function editCreditCardInfo(id){
   const c = getCreditCards().find(x=>x.id===id);
   if(!c) return;
@@ -3546,7 +3584,7 @@ function toggleCreditCardClosed(id){
 function deleteCreditCardPayment(cardId, payId){
   const c = getCreditCards().find(x=>x.id===cardId);
   if(!c) return;
-  if(!confirm('Delete this payment entry? (This does not restore the due amount it cleared.)')) return;
+  if(!confirm('Delete this payment entry? This does not restore the due amount it cleared. (If you need it back later, use "📝 Log a payment" and say no when it asks whether to reduce the due again.)')) return;
   c.payments = c.payments.filter(x=>x.id!==payId);
   saveData();
   renderCreditCards();
@@ -3586,6 +3624,7 @@ function buildCreditCardCard(c){
     ${pending.length>0?`<div class="pending-box" id="ccpending-${c.id}"></div>`:''}
     <div class="h-actions">
       <button class="buy" data-action="pay" ${c.currentDue<=0?'disabled':''}>+ Pay now</button>
+      <button data-action="logpay">📝 Log a payment</button>
       <button data-action="duedate">📅 Set next due</button>
       <button data-action="edit">✎ Edit</button>
       <button data-action="toggle">${isClosed?'▶ Reopen':'✓ Mark closed'}</button>
@@ -3596,6 +3635,7 @@ function buildCreditCardCard(c){
   `;
   const payBtn = card.querySelector('[data-action=pay]');
   if(c.currentDue>0) payBtn.addEventListener('click', ()=>payCreditCardNow(c.id));
+  card.querySelector('[data-action=logpay]').addEventListener('click', ()=>logCreditCardPayment(c.id));
   card.querySelector('[data-action=duedate]').addEventListener('click', ()=>setCreditCardDueDate(c.id));
   card.querySelector('[data-action=edit]').addEventListener('click', ()=>editCreditCardInfo(c.id));
   card.querySelector('[data-action=toggle]').addEventListener('click', ()=>toggleCreditCardClosed(c.id));
@@ -3613,9 +3653,13 @@ function buildCreditCardCard(c){
     const row = document.createElement('div');
     row.className = 'log-row';
     row.innerHTML = `<span>Paid ${fmtAmount(p.amount)} on ${p.date}</span>`;
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+    editBtn.addEventListener('click', ()=>editCreditCardPayment(c.id, p.id));
     const delBtn = document.createElement('button');
     delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
     delBtn.addEventListener('click', ()=>deleteCreditCardPayment(c.id, p.id));
+    row.appendChild(editBtn);
     row.appendChild(delBtn);
     logEl.appendChild(row);
   });
