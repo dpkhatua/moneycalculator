@@ -1,74 +1,74 @@
 {
   "AAPL": {
-    "price": 303.935,
+    "price": 304.73,
     "currency": "USD"
   },
   "MSFT": {
-    "price": 479.7144,
+    "price": 479.63,
     "currency": "USD"
   },
   "NVDA": {
-    "price": 226.37,
+    "price": 225.545,
     "currency": "USD"
   },
   "AVGO": {
-    "price": 397.27,
+    "price": 394.03,
     "currency": "USD"
   },
   "NASA": {
-    "price": 27.08,
+    "price": 26.815,
     "currency": "USD"
   },
   "IXHL": {
-    "price": 3.32,
+    "price": 3.3101,
     "currency": "USD"
   },
   "SMH": {
-    "price": 596.73,
+    "price": 595.0601,
     "currency": "USD"
   },
   "SPCX": {
-    "price": 147.7501,
+    "price": 146.64,
     "currency": "USD"
   },
   "UBER": {
-    "price": 75.915,
+    "price": 75.59,
     "currency": "USD"
   },
   "RKLB": {
-    "price": 83.26,
+    "price": 81.78,
     "currency": "USD"
   },
   "LUNR": {
-    "price": 20.555,
+    "price": 20.11,
     "currency": "USD"
   },
   "PL": {
-    "price": 24.78,
+    "price": 24.58,
     "currency": "USD"
   },
   "RDW": {
-    "price": 13.775,
+    "price": 13.415,
     "currency": "USD"
   },
   "BKSY": {
-    "price": 31.72,
+    "price": 31.2916,
     "currency": "USD"
   },
   "ASTS": {
-    "price": 72.03,
+    "price": 71.044,
     "currency": "USD"
   },
   "SPIR": {
-    "price": 14.25,
+    "price": 14.052,
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 63947.9414,
+    "price": 64353.9883,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1903.85,
+    "price": 1907.88,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1864.5,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-17T17:16:48.480936+00:00"
+  "updatedAt": "2026-08-17T18:21:22.124101+00:00"
 }
