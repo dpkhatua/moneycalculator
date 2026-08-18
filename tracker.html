@@ -1009,6 +1009,47 @@
   <div class="holding-list" id="ccList" style="margin-bottom:44px;"></div>
   </div>
 
+  <!-- Big Life Events -->
+  <div class="section-head collapsible" id="lifeEventSectionHead"><h2><span class="section-arrow" id="lifeEventArrow">▾</span>Big life events</h2></div>
+  <div id="lifeEventSectionBody">
+  <p class="section-desc">Marriage, home building, or any other big one-off project — kept completely separate from daily spending. Expenses logged here never touch your main transaction list, monthly/yearly stats, or budgets; they only ever show up here.</p>
+
+  <div class="tracker-grid" style="margin-bottom:20px;">
+    <div class="form-col" style="border-right:none;">
+      <div class="nw-subhead">Add an event</div>
+      <div class="holding-form">
+        <div>
+          <label>Name</label>
+          <input type="text" id="eventName" placeholder="e.g. Marriage, Home Building" maxlength="80">
+        </div>
+        <div>
+          <label>Target budget <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <input type="number" id="eventBudget" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Savings fund for this <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <select id="eventFundAccount"></select>
+        </div>
+        <div>
+          <label>Start date</label>
+          <input type="date" id="eventStartDate">
+        </div>
+        <div>
+          <button class="btn-primary" id="addLifeEvent" style="padding:9px 16px;">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nw-totals">
+    <div class="t"><div class="lbl">Active events</div><div class="val" id="eventActiveCount">0</div></div>
+    <div class="t"><div class="lbl">Total spent (all events)</div><div class="val" id="eventTotalSpent">0</div></div>
+    <div class="t"><div class="lbl">Total target</div><div class="val" id="eventTotalBudget">0</div></div>
+  </div>
+
+  <div class="holding-list" id="lifeEventList" style="margin-bottom:44px;"></div>
+  </div>
+
   <!-- Recurring Expenses -->
   <div class="section-head collapsible" id="recurringSectionHead"><h2><span class="section-arrow" id="recurringArrow">▾</span>Recurring expenses</h2></div>
   <div id="recurringSectionBody">
