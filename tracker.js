@@ -189,7 +189,8 @@ function emptyNetWorthBucket(){
     swps: [], // Systematic Withdrawal (and optional transfer-into-SIP): auto-withdraws from one holding, optionally auto-invests into another
     wealthSnapshots: [], // { month:'YYYY-MM', netWorth, investedValue, currentValue } — one entry per month, refreshed each time you open the tracker that month. Can't be reconstructed for months before this feature existed, since past market values were never recorded.
     loansTaken: [], // any loan you've borrowed (home/car/personal/etc.) — EMI auto-logs on schedule; outstanding balance counts as a liability in net worth
-    creditCards: [] // charges tagged to a card increase its due; outstanding due counts as a liability in net worth
+    creditCards: [], // charges tagged to a card increase its due; outstanding due counts as a liability in net worth
+    lifeEvents: [] // big one-off projects (marriage, home building, etc.) — expenses logged here are walled off from daily spending entirely, never touch the main transactions list or its stats
   };
 }
 
@@ -3706,6 +3707,242 @@ function renderCreditCards(){
   renderNWSummary(); // outstanding card dues affect net worth's liabilities total
 }
 
+// ---------- Big Life Events ----------
+// Fully walled off from daily spending — expenses logged here live only in
+// event.expenses, never in the main transactions array, so they never touch
+// monthly/yearly stats, category charts, or budgets.
+function getLifeEvents(){ return getNW().lifeEvents; }
+function eventTotalSpent(ev){ return ev.expenses.reduce((s,e)=>s+e.amount,0); }
+
+// Same debit/charge logic as a real transaction, applied directly without
+// ever creating an entry in the main transactions array.
+function applyEventExpenseToPaymentMethod(exp, direction){
+  if(!exp) return;
+  if(exp.creditCardId){
+    chargeCreditCard(exp.creditCardId, exp.amount * direction);
+    return;
+  }
+  if(exp.accountId){
+    adjustCashAccount(exp.accountId, -exp.amount * direction);
+  }
+}
+
+document.getElementById('addLifeEvent').addEventListener('click', ()=>{
+  const name = document.getElementById('eventName').value.trim();
+  const budgetRaw = document.getElementById('eventBudget').value;
+  const targetBudget = budgetRaw ? +budgetRaw : null;
+  const fundAccountId = document.getElementById('eventFundAccount').value || null;
+  const startDate = document.getElementById('eventStartDate').value || todayLocalISO();
+
+  if(!name){ alert('Give this event a name.'); return; }
+
+  getLifeEvents().push({
+    id: nwUid(), name, targetBudget, fundAccountId, startDate,
+    status: 'active', expenses: []
+  });
+  saveData();
+  document.getElementById('eventName').value = '';
+  document.getElementById('eventBudget').value = '';
+  document.getElementById('eventStartDate').value = todayLocalISO();
+  renderLifeEvents();
+});
+
+function addLifeEventExpense(eventId){
+  const ev = getLifeEvents().find(x=>x.id===eventId);
+  if(!ev) return;
+  const desc = prompt('What was this expense for?');
+  if(!desc || !desc.trim()) return;
+  const amtRaw = prompt('Amount:');
+  if(!amtRaw) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', todayLocalISO());
+  const date = dateRaw || todayLocalISO();
+  const catRaw = prompt('Category (e.g. Venue, Catering, Construction):', '') || '';
+
+  const paymentSel = document.getElementById('eventPaymentPicker_'+eventId);
+  const parsed = paymentSel ? parsePaymentSelectValue(paymentSel.value) : {accountId:null, creditCardId:null};
+
+  const exp = { id: nwUid(), date, description: desc.trim(), category: catRaw.trim()||'Other', amount: amt, accountId: parsed.accountId, creditCardId: parsed.creditCardId, currency: currentCurrency };
+  ev.expenses.push(exp);
+  applyEventExpenseToPaymentMethod(exp, 1);
+  saveData();
+  renderAll();
+}
+function editLifeEventExpense(eventId, expId){
+  const ev = getLifeEvents().find(x=>x.id===eventId);
+  if(!ev) return;
+  const exp = ev.expenses.find(x=>x.id===expId);
+  if(!exp) return;
+  const descRaw = prompt('Description:', exp.description);
+  if(descRaw===null) return;
+  const amtRaw = prompt('Amount:', exp.amount);
+  if(amtRaw===null) return;
+  const amt = +amtRaw;
+  if(!amt || amt<=0){ alert('Enter a valid amount.'); return; }
+  const dateRaw = prompt('Date (YYYY-MM-DD):', exp.date);
+  if(dateRaw===null) return;
+  const catRaw = prompt('Category:', exp.category);
+  if(catRaw===null) return;
+
+  applyEventExpenseToPaymentMethod(exp, -1); // undo old effect on its payment method
+  exp.description = descRaw.trim() || exp.description;
+  exp.amount = amt;
+  exp.date = dateRaw || exp.date;
+  exp.category = catRaw.trim() || exp.category;
+  applyEventExpenseToPaymentMethod(exp, 1); // apply new effect
+  saveData();
+  renderAll();
+}
+function deleteLifeEventExpense(eventId, expId){
+  const ev = getLifeEvents().find(x=>x.id===eventId);
+  if(!ev) return;
+  if(!confirm('Delete this expense entry? This can\'t be undone.')) return;
+  const exp = ev.expenses.find(x=>x.id===expId);
+  if(exp) applyEventExpenseToPaymentMethod(exp, -1);
+  ev.expenses = ev.expenses.filter(x=>x.id!==expId);
+  saveData();
+  renderAll();
+}
+function editLifeEventInfo(id){
+  const ev = getLifeEvents().find(x=>x.id===id);
+  if(!ev) return;
+  const newName = prompt('Name:', ev.name);
+  if(newName===null) return;
+  if(!newName.trim()){ alert('Name can\'t be empty.'); return; }
+  const budgetRaw = prompt('Target budget (leave blank for none):', ev.targetBudget||'');
+  if(budgetRaw===null) return;
+  ev.name = newName.trim();
+  ev.targetBudget = budgetRaw ? +budgetRaw : null;
+  saveData();
+  renderLifeEvents();
+}
+function toggleLifeEventClosed(id){
+  const ev = getLifeEvents().find(x=>x.id===id);
+  if(!ev) return;
+  ev.status = ev.status==='completed' ? 'active' : 'completed';
+  saveData();
+  renderLifeEvents();
+}
+function deleteLifeEvent(id){
+  const ev = getLifeEvents().find(x=>x.id===id);
+  if(!ev) return;
+  if(!confirm(`Delete "${ev.name}" entirely, including every expense logged under it? This can't be undone. (This does not undo any account/card debits those expenses already made.)`)) return;
+  markDeleted(id);
+  getNW().lifeEvents = getLifeEvents().filter(x=>x.id!==id);
+  saveData();
+  renderLifeEvents();
+}
+
+let expandedEventIds = new Set(); // which events' itemized expense lists are currently expanded
+
+function buildLifeEventCard(ev){
+  const spent = eventTotalSpent(ev);
+  const isCompleted = ev.status==='completed';
+  const fund = ev.fundAccountId ? getNW().holdings.find(h=>h.id===ev.fundAccountId) : null;
+  const remaining = ev.targetBudget!==null ? ev.targetBudget - spent : null;
+  const expanded = expandedEventIds.has(ev.id);
+
+  const card = document.createElement('div');
+  card.className = 'holding-card';
+  card.innerHTML = `
+    <div class="hc-top">
+      <span class="status-badge ${isCompleted?'stopped':'repaid'}">${isCompleted?'Completed':'Active'}</span>
+      <span class="h-name">${escapeHtml(ev.name)}</span>
+      <span class="h-meta">${fund?'Fund: '+escapeHtml(fund.name)+' ('+fmtAmount(holdingCurrentValue(fund))+')':''}</span>
+    </div>
+    <div class="hc-stats">
+      <div class="h-figure"><span class="lbl">Total spent</span>${fmtAmount(spent)}</div>
+      ${ev.targetBudget!==null?`<div class="h-figure"><span class="lbl">Target budget</span>${fmtAmount(ev.targetBudget)}</div>`:''}
+      ${remaining!==null?`<div class="h-figure h-gain${remaining<0?' loss':''}"><span class="lbl">Remaining</span>${fmtAmount(remaining)}</div>`:''}
+      <div class="h-figure"><span class="lbl">Items logged</span>${ev.expenses.length}</div>
+    </div>
+    <div class="setup-row" style="margin:12px 0;">
+      <select id="eventPaymentPicker_${ev.id}" style="max-width:220px;"><option value="">Paid via (optional)</option></select>
+      <button class="btn-primary" data-action="addexp" style="padding:9px 16px;">+ Add expense</button>
+    </div>
+    <div class="cat-group-header" data-action="togglelist">
+      <span class="cat-arrow">${expanded?'▾':'▸'}</span>
+      <span class="cat-group-name">Every expense logged</span>
+      <span class="cat-group-meta">${ev.expenses.length} item${ev.expenses.length===1?'':'s'}</span>
+    </div>
+    <div class="h-log" id="eventlog-${ev.id}" style="display:${expanded?'':'none'};"></div>
+    <div class="h-actions">
+      <button data-action="edit">✎ Edit</button>
+      <button data-action="toggle">${isCompleted?'▶ Reopen':'✓ Mark completed'}</button>
+      <button data-action="del">× Delete</button>
+    </div>
+  `;
+
+  const paymentSel = card.querySelector(`#eventPaymentPicker_${ev.id}`);
+  const accounts = getSavingsAccounts();
+  const cards = getCreditCards();
+  let optHtml = '<option value="">Paid via (optional)</option>';
+  if(accounts.length>0) optHtml += `<optgroup label="Accounts">${accounts.map(a=>`<option value="acct:${a.id}">${escapeHtml(a.name)}</option>`).join('')}</optgroup>`;
+  if(cards.length>0) optHtml += `<optgroup label="Credit Cards">${cards.map(c=>`<option value="card:${c.id}">${escapeHtml(c.name)}</option>`).join('')}</optgroup>`;
+  paymentSel.innerHTML = optHtml;
+
+  card.querySelector('[data-action=addexp]').addEventListener('click', ()=>addLifeEventExpense(ev.id));
+  card.querySelector('[data-action=edit]').addEventListener('click', ()=>editLifeEventInfo(ev.id));
+  card.querySelector('[data-action=toggle]').addEventListener('click', ()=>toggleLifeEventClosed(ev.id));
+  card.querySelector('[data-action=del]').addEventListener('click', ()=>deleteLifeEvent(ev.id));
+  card.querySelector('[data-action=togglelist]').addEventListener('click', ()=>{
+    if(expandedEventIds.has(ev.id)) expandedEventIds.delete(ev.id);
+    else expandedEventIds.add(ev.id);
+    renderLifeEventsList();
+  });
+
+  const logEl = card.querySelector('.h-log');
+  if(expanded){
+    if(ev.expenses.length===0){
+      logEl.innerHTML = '<span style="color:var(--ink-soft);">No expenses logged yet.</span>';
+    }
+    const accountsById = new Map(getSavingsAccounts().map(a=>[a.id, a.name]));
+    const cardsById = new Map(getCreditCards().map(c=>[c.id, c.name]));
+    ev.expenses.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(exp=>{
+      const paidVia = exp.creditCardId ? cardsById.get(exp.creditCardId) : (exp.accountId ? accountsById.get(exp.accountId) : null);
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      row.innerHTML = `<span><b>${escapeHtml(exp.description)}</b> — ${fmtAmount(exp.amount)} — ${escapeHtml(exp.category)} — ${exp.date}${paidVia?' — 🏦 '+escapeHtml(paidVia):''}</span>`;
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✎'; editBtn.title = 'Edit this entry';
+      editBtn.addEventListener('click', ()=>editLifeEventExpense(ev.id, exp.id));
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '×'; delBtn.title = 'Delete this entry';
+      delBtn.addEventListener('click', ()=>deleteLifeEventExpense(ev.id, exp.id));
+      row.appendChild(editBtn); row.appendChild(delBtn);
+      logEl.appendChild(row);
+    });
+  }
+
+  return card;
+}
+
+function renderLifeEventsList(){
+  const wrap = document.getElementById('lifeEventList');
+  const events = getLifeEvents();
+  if(events.length===0){
+    wrap.innerHTML = '<div class="empty-state">No big events logged yet — add one above.</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  events.slice()
+    .sort((a,b)=> (a.status==='active'?0:1) - (b.status==='active'?0:1))
+    .forEach(ev=>wrap.appendChild(buildLifeEventCard(ev)));
+}
+function renderLifeEventsSummary(){
+  const events = getLifeEvents();
+  const active = events.filter(e=>e.status==='active');
+  document.getElementById('eventActiveCount').textContent = active.length;
+  document.getElementById('eventTotalSpent').textContent = fmtAmount(events.reduce((s,e)=>s+eventTotalSpent(e),0));
+  document.getElementById('eventTotalBudget').textContent = fmtAmount(events.filter(e=>e.targetBudget!==null).reduce((s,e)=>s+e.targetBudget,0));
+}
+function renderLifeEvents(){
+  populateAccountSelect('eventFundAccount');
+  renderLifeEventsList();
+  renderLifeEventsSummary();
+}
+
 // ---------- Upcoming due-date notifications ----------
 // SIPs and recurring expenses: warn 5 days out. Insurance: warn a full month
 // out, since premiums are usually bigger and less convenient to scramble for.
@@ -4388,6 +4625,7 @@ setupCollapsibleSection('sipsSectionHead','sipsArrow','sipsSectionBody','spendin
 setupCollapsibleSection('insuranceSectionHead','insuranceArrow','insuranceSectionBody','spendingTracker.collapsed.insurance');
 setupCollapsibleSection('loansSectionHead','loansArrow','loansSectionBody','spendingTracker.collapsed.loans');
 setupCollapsibleSection('ccSectionHead','ccArrow','ccSectionBody','spendingTracker.collapsed.cc');
+setupCollapsibleSection('lifeEventSectionHead','lifeEventArrow','lifeEventSectionBody','spendingTracker.collapsed.lifeEvent');
 setupCollapsibleSection('recurringSectionHead','recurringArrow','recurringSectionBody','spendingTracker.collapsed.recurring');
 setupCollapsibleSection('swpSectionHead','swpArrow','swpSectionBody','spendingTracker.collapsed.swp');
 setupCollapsibleSection('budgetSectionHead','budgetArrow','budgetSectionBody','spendingTracker.collapsed.budget');
@@ -4442,6 +4680,7 @@ function renderAll(){
   renderSwps();
   renderLoans();
   renderCreditCards();
+  renderLifeEvents();
   renderNotifications();
 }
 
@@ -4553,6 +4792,10 @@ function mergeNetWorthFromBackup(incomingNW, preferIncoming){
     if(Array.isArray(incomingBucket.creditCards)){
       if(!localBucket.creditCards) localBucket.creditCards = [];
       mergeArrayById(localBucket.creditCards, incomingBucket.creditCards, preferIncoming);
+    }
+    if(Array.isArray(incomingBucket.lifeEvents)){
+      if(!localBucket.lifeEvents) localBucket.lifeEvents = [];
+      mergeArrayById(localBucket.lifeEvents, incomingBucket.lifeEvents, preferIncoming);
     }
     if(Array.isArray(incomingBucket.wealthSnapshots)){
       if(!localBucket.wealthSnapshots) localBucket.wealthSnapshots = [];
@@ -4892,6 +5135,7 @@ document.getElementById('swpStartDate').value = todayLocalISO();
 document.getElementById('remitDate').value = todayLocalISO();
 document.getElementById('loanStartDate').value = todayLocalISO();
 document.getElementById('ccNextDueDate').value = addMonthsClamped(todayLocalISO(), 1);
+document.getElementById('eventStartDate').value = todayLocalISO();
 renderAll();
 checkBackupReminder();
 
