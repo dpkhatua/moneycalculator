@@ -64,440 +64,440 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 64000.6719,
+    "price": 64056.3086,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1886.05,
+    "price": 1892.26,
     "currency": "USD"
   },
   "ADANIENT.NS": {
-    "price": 3007.3,
+    "price": 3022.1001,
     "currency": "INR"
   },
   "ADANIGREEN.NS": {
-    "price": 1327.6,
+    "price": 1324.5,
     "currency": "INR"
   },
   "ADANIPORTS.NS": {
-    "price": 1691.0,
+    "price": 1682.1,
     "currency": "INR"
   },
   "ADANIPOWER.NS": {
-    "price": 203.56,
+    "price": 205.41,
     "currency": "INR"
   },
   "AMBUJACEM.NS": {
-    "price": 415.25,
+    "price": 413.8,
     "currency": "INR"
   },
   "APOLLOHOSP.NS": {
-    "price": 8825.5,
+    "price": 8862.5,
     "currency": "INR"
   },
   "ASIANPAINT.NS": {
-    "price": 2687.5,
+    "price": 2653.8,
     "currency": "INR"
   },
   "AUROPHARMA.NS": {
-    "price": 1627.2,
+    "price": 1641.5,
     "currency": "INR"
   },
   "AXISBANK.NS": {
-    "price": 1227.3,
+    "price": 1235.0,
     "currency": "INR"
   },
   "BAJAJ-AUTO.NS": {
-    "price": 11663.0,
+    "price": 11748.0,
     "currency": "INR"
   },
   "BAJFINANCE.NS": {
-    "price": 1089.3,
+    "price": 1091.9,
     "currency": "INR"
   },
   "BAJAJFINSV.NS": {
-    "price": 2005.0,
+    "price": 2003.9,
     "currency": "INR"
   },
   "BANKBARODA.NS": {
-    "price": 246.55,
+    "price": 245.8,
     "currency": "INR"
   },
   "BEL.NS": {
-    "price": 412.45,
+    "price": 413.35,
     "currency": "INR"
   },
   "BHARTIARTL.NS": {
-    "price": 1969.3,
+    "price": 1938.2,
     "currency": "INR"
   },
   "BHEL.NS": {
-    "price": 435.95,
+    "price": 430.35,
     "currency": "INR"
   },
   "BPCL.NS": {
-    "price": 316.65,
+    "price": 315.8,
     "currency": "INR"
   },
   "BRITANNIA.NS": {
-    "price": 5521.0,
+    "price": 5527.5,
     "currency": "INR"
   },
   "CANBK.NS": {
-    "price": 131.1,
+    "price": 129.73,
     "currency": "INR"
   },
   "CIPLA.NS": {
-    "price": 1431.5,
+    "price": 1435.0,
     "currency": "INR"
   },
   "COALINDIA.NS": {
-    "price": 408.45,
+    "price": 411.05,
     "currency": "INR"
   },
   "DABUR.NS": {
-    "price": 406.8,
+    "price": 403.75,
     "currency": "INR"
   },
   "DIVISLAB.NS": {
-    "price": 8481.5,
+    "price": 8612.0,
     "currency": "INR"
   },
   "DLF.NS": {
-    "price": 671.0,
+    "price": 662.25,
     "currency": "INR"
   },
   "DRREDDY.NS": {
-    "price": 1192.0,
+    "price": 1183.9,
     "currency": "INR"
   },
   "EICHERMOT.NS": {
-    "price": 8050.0,
+    "price": 8052.0,
     "currency": "INR"
   },
   "GAIL.NS": {
-    "price": 172.1,
+    "price": 172.34,
     "currency": "INR"
   },
   "GODREJCP.NS": {
-    "price": 928.0,
+    "price": 923.8,
     "currency": "INR"
   },
   "GRASIM.NS": {
-    "price": 3250.5,
+    "price": 3277.8,
     "currency": "INR"
   },
   "HAL.NS": {
-    "price": 5059.0,
+    "price": 5100.0,
     "currency": "INR"
   },
   "HAVELLS.NS": {
-    "price": 1299.0,
+    "price": 1301.9,
     "currency": "INR"
   },
   "HCLTECH.NS": {
-    "price": 1325.0,
+    "price": 1313.8,
     "currency": "INR"
   },
   "HDFCBANK.NS": {
-    "price": 729.0,
+    "price": 726.0,
     "currency": "INR"
   },
   "HDFCLIFE.NS": {
-    "price": 543.0,
+    "price": 540.3,
     "currency": "INR"
   },
   "HEROMOTOCO.NS": {
-    "price": 5745.0,
+    "price": 5720.0,
     "currency": "INR"
   },
   "HINDALCO.NS": {
-    "price": 1049.9,
+    "price": 1041.05,
     "currency": "INR"
   },
   "HINDUNILVR.NS": {
-    "price": 2055.0,
+    "price": 2044.7,
     "currency": "INR"
   },
   "ICICIBANK.NS": {
-    "price": 1415.3,
+    "price": 1413.9,
     "currency": "INR"
   },
   "ICICIGI.NS": {
-    "price": 1626.3,
+    "price": 1619.0,
     "currency": "INR"
   },
   "ICICIPRULI.NS": {
-    "price": 507.0,
+    "price": 506.7,
     "currency": "INR"
   },
   "INDIGO.NS": {
-    "price": 5275.5,
+    "price": 5221.5,
     "currency": "INR"
   },
   "INDUSINDBK.NS": {
-    "price": 1010.6,
+    "price": 1016.5,
     "currency": "INR"
   },
   "INFY.NS": {
-    "price": 1139.9,
+    "price": 1120.3,
     "currency": "INR"
   },
   "IOC.NS": {
-    "price": 138.61,
+    "price": 138.93,
     "currency": "INR"
   },
   "IRCTC.NS": {
-    "price": 499.95,
+    "price": 498.3,
     "currency": "INR"
   },
   "ITC.NS": {
-    "price": 273.05,
+    "price": 272.45,
     "currency": "INR"
   },
   "JINDALSTEL.NS": {
-    "price": 1116.1,
+    "price": 1112.3,
     "currency": "INR"
   },
   "JSWENERGY.NS": {
-    "price": 555.5,
+    "price": 552.05,
     "currency": "INR"
   },
   "JSWSTEEL.NS": {
-    "price": 1277.8,
+    "price": 1279.6,
     "currency": "INR"
   },
   "JUBLFOOD.NS": {
-    "price": 511.5,
+    "price": 504.2,
     "currency": "INR"
   },
   "KOTAKBANK.NS": {
-    "price": 392.7,
+    "price": 390.85,
     "currency": "INR"
   },
   "LT.NS": {
-    "price": 4086.7,
+    "price": 4056.8999,
     "currency": "INR"
   },
   "M&M.NS": {
-    "price": 3390.3999,
+    "price": 3414.2,
     "currency": "INR"
   },
   "MARICO.NS": {
-    "price": 852.05,
+    "price": 850.85,
     "currency": "INR"
   },
   "MARUTI.NS": {
-    "price": 13760.0,
+    "price": 13817.0,
     "currency": "INR"
   },
   "MOTHERSON.NS": {
-    "price": 168.06,
+    "price": 169.8,
     "currency": "INR"
   },
   "NESTLEIND.NS": {
-    "price": 1470.0,
+    "price": 1472.9,
     "currency": "INR"
   },
   "NTPC.NS": {
-    "price": 337.0,
+    "price": 338.45,
     "currency": "INR"
   },
   "ONGC.NS": {
-    "price": 238.49,
+    "price": 240.04,
     "currency": "INR"
   },
   "PAYTM.NS": {
-    "price": 1580.2,
+    "price": 1564.0,
     "currency": "INR"
   },
   "PIDILITIND.NS": {
-    "price": 1669.0,
+    "price": 1662.6,
     "currency": "INR"
   },
   "PFC.NS": {
-    "price": 374.4,
+    "price": 374.95,
     "currency": "INR"
   },
   "PNB.NS": {
-    "price": 117.32,
+    "price": 116.93,
     "currency": "INR"
   },
   "POWERGRID.NS": {
-    "price": 266.15,
+    "price": 266.1,
     "currency": "INR"
   },
   "RECLTD.NS": {
-    "price": 340.0,
+    "price": 339.35,
     "currency": "INR"
   },
   "RELIANCE.NS": {
-    "price": 1316.0,
+    "price": 1325.4,
     "currency": "INR"
   },
   "SBILIFE.NS": {
-    "price": 1790.4,
+    "price": 1784.1,
     "currency": "INR"
   },
   "SHREECEM.NS": {
-    "price": 24535.0,
+    "price": 24635.0,
     "currency": "INR"
   },
   "SIEMENS.NS": {
-    "price": 3943.0,
+    "price": 3961.5,
     "currency": "INR"
   },
   "SUNPHARMA.NS": {
-    "price": 1882.0,
+    "price": 1893.5,
     "currency": "INR"
   },
   "TATACONSUM.NS": {
-    "price": 1072.6,
+    "price": 1072.5,
     "currency": "INR"
   },
   "TATAPOWER.NS": {
-    "price": 381.5,
+    "price": 379.8,
     "currency": "INR"
   },
   "TATASTEEL.NS": {
-    "price": 186.0,
+    "price": 186.53,
     "currency": "INR"
   },
   "TCS.NS": {
-    "price": 2313.2,
+    "price": 2290.0,
     "currency": "INR"
   },
   "TECHM.NS": {
-    "price": 1610.0,
+    "price": 1589.0,
     "currency": "INR"
   },
   "TITAN.NS": {
-    "price": 5068.5,
+    "price": 5063.7998,
     "currency": "INR"
   },
   "TORNTPHARM.NS": {
-    "price": 4900.0,
+    "price": 4958.0,
     "currency": "INR"
   },
   "TRENT.NS": {
-    "price": 2946.0,
+    "price": 2938.3,
     "currency": "INR"
   },
   "TVSMOTOR.NS": {
-    "price": 4385.8999,
+    "price": 4380.6001,
     "currency": "INR"
   },
   "ULTRACEMCO.NS": {
-    "price": 11681.0,
+    "price": 11596.0,
     "currency": "INR"
   },
   "UNIONBANK.NS": {
-    "price": 188.9,
+    "price": 187.4,
     "currency": "INR"
   },
   "VEDL.NS": {
-    "price": 269.7,
+    "price": 267.1,
     "currency": "INR"
   },
   "WIPRO.NS": {
-    "price": 181.9,
+    "price": 179.45,
     "currency": "INR"
   },
   "CGPOWER.NS": {
-    "price": 898.8,
+    "price": 893.65,
     "currency": "INR"
   },
   "CROMPTON.NS": {
-    "price": 246.5,
+    "price": 243.85,
     "currency": "INR"
   },
   "DEEPAKNTR.NS": {
-    "price": 1780.5,
+    "price": 1764.5,
     "currency": "INR"
   },
   "DIXON.NS": {
-    "price": 14025.0,
+    "price": 14232.0,
     "currency": "INR"
   },
   "DMART.NS": {
-    "price": 3995.0,
+    "price": 3960.0,
     "currency": "INR"
   },
   "E2E.NS": {
-    "price": 686.15,
+    "price": 673.0,
     "currency": "INR"
   },
   "HDFCSML250.NS": {
-    "price": 185.2,
+    "price": 185.0,
     "currency": "INR"
   },
   "IREDA.NS": {
-    "price": 116.85,
+    "price": 115.8,
     "currency": "INR"
   },
   "IRFC.NS": {
-    "price": 87.05,
+    "price": 86.6,
     "currency": "INR"
   },
   "JIOFIN.NS": {
-    "price": 249.75,
+    "price": 246.8,
     "currency": "INR"
   },
   "KPITTECH.NS": {
-    "price": 609.0,
+    "price": 601.45,
     "currency": "INR"
   },
   "KWIL.NS": {
-    "price": 38.79,
+    "price": 38.82,
     "currency": "INR"
   },
   "LICI.NS": {
-    "price": 410.0,
+    "price": 413.0,
     "currency": "INR"
   },
   "MID150CASE.NS": {
-    "price": 11.84,
+    "price": 11.78,
     "currency": "INR"
   },
   "MAFANG.NS": {
-    "price": 211.42,
+    "price": 209.43,
     "currency": "INR"
   },
   "NIFTYBEES.NS": {
-    "price": 277.91,
+    "price": 276.55,
     "currency": "INR"
   },
   "POLYCAB.NS": {
-    "price": 9370.0,
+    "price": 9268.0,
     "currency": "INR"
   },
   "RVNL.NS": {
-    "price": 227.79,
+    "price": 226.38,
     "currency": "INR"
   },
   "SETFNN50.NS": {
-    "price": 801.0,
+    "price": 798.01,
     "currency": "INR"
   },
   "TMPV.NS": {
-    "price": 330.2,
+    "price": 327.75,
     "currency": "INR"
   },
   "TMCV.NS": {
-    "price": 470.4,
+    "price": 472.0,
     "currency": "INR"
   },
   "TRIDENT.NS": {
-    "price": 24.57,
+    "price": 24.83,
     "currency": "INR"
   },
   "YESBANK.NS": {
-    "price": 22.92,
+    "price": 22.67,
     "currency": "INR"
   },
   "ZENTEC.NS": {
-    "price": 1864.5,
+    "price": 1917.4,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-18T03:34:29.944287+00:00"
+  "updatedAt": "2026-08-18T04:24:05.499319+00:00"
 }
