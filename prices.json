@@ -52,7 +52,7 @@
     "currency": "USD"
   },
   "BKSY": {
-    "price": 26.72,
+    "price": 26.73,
     "currency": "USD"
   },
   "ASTS": {
@@ -60,15 +60,15 @@
     "currency": "USD"
   },
   "SPIR": {
-    "price": 13.9,
+    "price": 13.89,
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 72700.6719,
+    "price": 72781.5312,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2320.3899,
+    "price": 2323.0801,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1909.1,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-20T20:15:41.783586+00:00"
+  "updatedAt": "2026-08-20T21:17:24.446157+00:00"
 }
