@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 74722.8125,
+    "price": 74487.1719,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2352.3501,
+    "price": 2347.0,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -256,7 +256,7 @@
     "currency": "INR"
   },
   "JINDALSTEL.NS": {
-    "price": 1116.9,
+    "price": 1118.9,
     "currency": "INR"
   },
   "JSWENERGY.NS": {
@@ -496,8 +496,8 @@
     "currency": "INR"
   },
   "ZENTEC.NS": {
-    "price": 1908.1,
+    "price": 1909.1,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-21T02:16:42.869921+00:00"
+  "updatedAt": "2026-08-21T03:40:45.912376+00:00"
 }
