@@ -60,15 +60,15 @@
     "currency": "USD"
   },
   "SPIR": {
-    "price": 13.725,
+    "price": 13.73,
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 78875.2188,
+    "price": 78253.4297,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2457.9199,
+    "price": 2427.77,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1877.7,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-25T20:16:19.945786+00:00"
+  "updatedAt": "2026-08-25T21:17:18.280488+00:00"
 }
