@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 78754.1797,
+    "price": 79913.1797,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2476.9199,
+    "price": 2496.0601,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1903.3,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-25T00:33:31.325825+00:00"
+  "updatedAt": "2026-08-25T02:11:24.078520+00:00"
 }
