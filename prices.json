@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 78752.1016,
+    "price": 78820.8438,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2491.8101,
+    "price": 2501.22,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -316,7 +316,7 @@
     "currency": "INR"
   },
   "PFC.NS": {
-    "price": 364.1,
+    "price": 360.2,
     "currency": "INR"
   },
   "PNB.NS": {
@@ -499,5 +499,5 @@
     "price": 1873.4,
     "currency": "INR"
   },
-  "updatedAt": "2026-08-26T21:24:50.838383+00:00"
+  "updatedAt": "2026-08-27T02:21:11.295159+00:00"
 }
