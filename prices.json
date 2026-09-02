@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 77493.9062,
+    "price": 76955.1406,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2422.5901,
+    "price": 2399.1201,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -176,7 +176,7 @@
     "currency": "INR"
   },
   "GAIL.NS": {
-    "price": 172.69,
+    "price": 172.19,
     "currency": "INR"
   },
   "GODREJCP.NS": {
@@ -300,7 +300,7 @@
     "currency": "INR"
   },
   "NTPC.NS": {
-    "price": 327.5,
+    "price": 324.0,
     "currency": "INR"
   },
   "ONGC.NS": {
@@ -499,5 +499,5 @@
     "price": 1780.7,
     "currency": "INR"
   },
-  "updatedAt": "2026-09-01T23:38:06.441766+00:00"
+  "updatedAt": "2026-09-02T01:42:58.142363+00:00"
 }
