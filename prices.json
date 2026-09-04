@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 81311.5391,
+    "price": 80830.2188,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2504.72,
+    "price": 2500.0601,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -152,7 +152,7 @@
     "currency": "INR"
   },
   "COALINDIA.NS": {
-    "price": 420.05,
+    "price": 414.8,
     "currency": "INR"
   },
   "DABUR.NS": {
@@ -304,7 +304,7 @@
     "currency": "INR"
   },
   "ONGC.NS": {
-    "price": 236.0,
+    "price": 235.0,
     "currency": "INR"
   },
   "PAYTM.NS": {
@@ -499,5 +499,5 @@
     "price": 1810.3,
     "currency": "INR"
   },
-  "updatedAt": "2026-09-03T23:38:04.864130+00:00"
+  "updatedAt": "2026-09-04T01:42:09.462310+00:00"
 }
