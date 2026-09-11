@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 76738.2734,
+    "price": 76775.0938,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2443.72,
+    "price": 2448.5701,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -432,7 +432,7 @@
     "currency": "INR"
   },
   "IREDA.NS": {
-    "price": 113.32,
+    "price": 112.57,
     "currency": "INR"
   },
   "IRFC.NS": {
@@ -499,5 +499,5 @@
     "price": 1749.9,
     "currency": "INR"
   },
-  "updatedAt": "2026-09-10T23:31:01.602101+00:00"
+  "updatedAt": "2026-09-11T01:46:58.893529+00:00"
 }
