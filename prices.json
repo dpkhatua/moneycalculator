@@ -1,74 +1,74 @@
 {
   "AAPL": {
-    "price": 333.99,
+    "price": 333.69,
     "currency": "USD"
   },
   "MSFT": {
-    "price": 515.31,
+    "price": 517.53,
     "currency": "USD"
   },
   "NVDA": {
-    "price": 234.12,
+    "price": 233.95,
     "currency": "USD"
   },
   "AVGO": {
-    "price": 356.07,
+    "price": 355.14,
     "currency": "USD"
   },
   "NASA": {
-    "price": 25.06,
+    "price": 25.0,
     "currency": "USD"
   },
   "IXHL": {
-    "price": 3.255,
+    "price": 3.21,
     "currency": "USD"
   },
   "SMH": {
-    "price": 632.025,
+    "price": 630.6,
     "currency": "USD"
   },
   "SPCX": {
-    "price": 159.5384,
+    "price": 158.96,
     "currency": "USD"
   },
   "UBER": {
-    "price": 68.185,
+    "price": 68.11,
     "currency": "USD"
   },
   "RKLB": {
-    "price": 73.87,
+    "price": 73.92,
     "currency": "USD"
   },
   "LUNR": {
-    "price": 14.715,
+    "price": 14.71,
     "currency": "USD"
   },
   "PL": {
-    "price": 17.565,
+    "price": 17.5,
     "currency": "USD"
   },
   "RDW": {
-    "price": 10.84,
+    "price": 10.88,
     "currency": "USD"
   },
   "BKSY": {
-    "price": 22.06,
+    "price": 21.92,
     "currency": "USD"
   },
   "ASTS": {
-    "price": 58.51,
+    "price": 58.45,
     "currency": "USD"
   },
   "SPIR": {
-    "price": 11.2,
+    "price": 11.11,
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 84204.9375,
+    "price": 84478.5391,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2666.55,
+    "price": 2666.27,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -456,7 +456,7 @@
     "currency": "INR"
   },
   "MID150CASE.NS": {
-    "price": 10.96,
+    "price": 10.9,
     "currency": "INR"
   },
   "MAFANG.NS": {
@@ -464,7 +464,7 @@
     "currency": "INR"
   },
   "NIFTYBEES.NS": {
-    "price": 257.25,
+    "price": 256.5,
     "currency": "INR"
   },
   "POLYCAB.NS": {
@@ -476,7 +476,7 @@
     "currency": "INR"
   },
   "SETFNN50.NS": {
-    "price": 741.0,
+    "price": 742.49,
     "currency": "INR"
   },
   "TMPV.NS": {
@@ -499,5 +499,5 @@
     "price": 1575.5,
     "currency": "INR"
   },
-  "updatedAt": "2026-10-02T19:37:54.825441+00:00"
+  "updatedAt": "2026-10-02T23:22:42.290511+00:00"
 }
