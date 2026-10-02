@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 84674.5625,
+    "price": 85791.8672,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2704.27,
+    "price": 2724.05,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -248,7 +248,7 @@
     "currency": "INR"
   },
   "IRCTC.NS": {
-    "price": 454.1,
+    "price": 454.0,
     "currency": "INR"
   },
   "ITC.NS": {
@@ -412,7 +412,7 @@
     "currency": "INR"
   },
   "DEEPAKNTR.NS": {
-    "price": 1492.8,
+    "price": 1492.0,
     "currency": "INR"
   },
   "DIXON.NS": {
@@ -424,11 +424,11 @@
     "currency": "INR"
   },
   "E2E.NS": {
-    "price": 648.0,
+    "price": 650.0,
     "currency": "INR"
   },
   "HDFCSML250.NS": {
-    "price": 177.81,
+    "price": 178.45,
     "currency": "INR"
   },
   "IREDA.NS": {
@@ -448,7 +448,7 @@
     "currency": "INR"
   },
   "KWIL.NS": {
-    "price": 38.36,
+    "price": 38.41,
     "currency": "INR"
   },
   "LICI.NS": {
@@ -456,15 +456,15 @@
     "currency": "INR"
   },
   "MID150CASE.NS": {
-    "price": 10.9,
+    "price": 10.96,
     "currency": "INR"
   },
   "MAFANG.NS": {
-    "price": 248.21,
+    "price": 248.38,
     "currency": "INR"
   },
   "NIFTYBEES.NS": {
-    "price": 256.5,
+    "price": 257.25,
     "currency": "INR"
   },
   "POLYCAB.NS": {
@@ -476,7 +476,7 @@
     "currency": "INR"
   },
   "SETFNN50.NS": {
-    "price": 742.49,
+    "price": 741.0,
     "currency": "INR"
   },
   "TMPV.NS": {
@@ -484,11 +484,11 @@
     "currency": "INR"
   },
   "TMCV.NS": {
-    "price": 415.5,
+    "price": 418.1,
     "currency": "INR"
   },
   "TRIDENT.NS": {
-    "price": 22.16,
+    "price": 22.24,
     "currency": "INR"
   },
   "YESBANK.NS": {
@@ -496,8 +496,8 @@
     "currency": "INR"
   },
   "ZENTEC.NS": {
-    "price": 1576.1,
+    "price": 1575.5,
     "currency": "INR"
   },
-  "updatedAt": "2026-10-02T01:10:22.947647+00:00"
+  "updatedAt": "2026-10-02T07:40:01.877190+00:00"
 }
