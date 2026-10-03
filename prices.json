@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 84949.5312,
+    "price": 84718.6797,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2685.6699,
+    "price": 2685.95,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -428,7 +428,7 @@
     "currency": "INR"
   },
   "HDFCSML250.NS": {
-    "price": 178.45,
+    "price": 177.81,
     "currency": "INR"
   },
   "IREDA.NS": {
@@ -460,7 +460,7 @@
     "currency": "INR"
   },
   "MAFANG.NS": {
-    "price": 248.38,
+    "price": 248.21,
     "currency": "INR"
   },
   "NIFTYBEES.NS": {
@@ -499,5 +499,5 @@
     "price": 1575.5,
     "currency": "INR"
   },
-  "updatedAt": "2026-10-03T18:24:05.332014+00:00"
+  "updatedAt": "2026-10-03T21:53:24.410317+00:00"
 }
