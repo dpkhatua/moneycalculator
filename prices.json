@@ -64,7 +64,7 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 84600.1328,
+    "price": 84826.9688,
     "currency": "USD"
   },
   "ETH-USD": {
@@ -499,5 +499,5 @@
     "price": 1575.5,
     "currency": "INR"
   },
-  "updatedAt": "2026-10-03T08:39:30.213112+00:00"
+  "updatedAt": "2026-10-03T14:02:06.568751+00:00"
 }
