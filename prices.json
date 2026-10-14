@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 83379.8984,
+    "price": 83300.1719,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2507.6599,
+    "price": 2504.05,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -364,7 +364,7 @@
     "currency": "INR"
   },
   "TCS.NS": {
-    "price": 2269.3,
+    "price": 2257.3,
     "currency": "INR"
   },
   "TECHM.NS": {
@@ -396,7 +396,7 @@
     "currency": "INR"
   },
   "VEDL.NS": {
-    "price": 256.3,
+    "price": 251.3,
     "currency": "INR"
   },
   "WIPRO.NS": {
@@ -499,5 +499,5 @@
     "price": 1652.7,
     "currency": "INR"
   },
-  "updatedAt": "2026-10-13T22:02:22.698847+00:00"
+  "updatedAt": "2026-10-14T01:28:21.671122+00:00"
 }
