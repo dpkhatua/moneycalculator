@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 82389.1875,
+    "price": 82260.8438,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2456.1201,
+    "price": 2440.1599,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -196,7 +196,7 @@
     "currency": "INR"
   },
   "HCLTECH.NS": {
-    "price": 1360.0,
+    "price": 1348.0,
     "currency": "INR"
   },
   "HDFCBANK.NS": {
@@ -499,5 +499,5 @@
     "price": 1695.0,
     "currency": "INR"
   },
-  "updatedAt": "2026-10-15T22:44:48.215159+00:00"
+  "updatedAt": "2026-10-16T00:52:32.963110+00:00"
 }
