@@ -1,6 +1,6 @@
 {
   "AAPL": {
-    "price": 347.725,
+    "price": 347.73,
     "currency": "USD"
   },
   "MSFT": {
@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 80954.7266,
+    "price": 80739.8125,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2381.46,
+    "price": 2377.48,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -499,5 +499,5 @@
     "price": 1493.8,
     "currency": "INR"
   },
-  "updatedAt": "2026-10-24T00:08:01.355625+00:00"
+  "updatedAt": "2026-10-24T05:10:48.173858+00:00"
 }
