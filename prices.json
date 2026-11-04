@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 77746.5078,
+    "price": 76491.7891,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 2291.3201,
+    "price": 2250.97,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -152,7 +152,7 @@
     "currency": "INR"
   },
   "COALINDIA.NS": {
-    "price": 408.0,
+    "price": 397.75,
     "currency": "INR"
   },
   "DABUR.NS": {
@@ -180,7 +180,7 @@
     "currency": "INR"
   },
   "GODREJCP.NS": {
-    "price": 830.0,
+    "price": 825.0,
     "currency": "INR"
   },
   "GRASIM.NS": {
@@ -225,6 +225,10 @@
   },
   "ICICIGI.NS": {
     "price": 1595.4,
+    "currency": "INR"
+  },
+  "ICICIPRULI.NS": {
+    "price": 409.7,
     "currency": "INR"
   },
   "INDIGO.NS": {
@@ -491,5 +495,5 @@
     "price": 1710.6,
     "currency": "INR"
   },
-  "updatedAt": "2026-11-03T22:07:39.174381+00:00"
+  "updatedAt": "2026-11-04T02:49:06.737286+00:00"
 }
