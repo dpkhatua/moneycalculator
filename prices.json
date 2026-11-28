@@ -64,11 +64,11 @@
     "currency": "USD"
   },
   "BTC-USD": {
-    "price": 59804.4688,
+    "price": 59744.2812,
     "currency": "USD"
   },
   "ETH-USD": {
-    "price": 1658.26,
+    "price": 1656.61,
     "currency": "USD"
   },
   "ADANIENT.NS": {
@@ -227,6 +227,10 @@
     "price": 1738.5,
     "currency": "INR"
   },
+  "ICICIPRULI.NS": {
+    "price": 468.0,
+    "currency": "INR"
+  },
   "INDIGO.NS": {
     "price": 5659.6001,
     "currency": "INR"
@@ -364,7 +368,7 @@
     "currency": "INR"
   },
   "TECHM.NS": {
-    "price": 1813.9,
+    "price": 906.95,
     "currency": "INR"
   },
   "TITAN.NS": {
@@ -491,5 +495,5 @@
     "price": 1793.2,
     "currency": "INR"
   },
-  "updatedAt": "2026-11-27T23:03:40.092651+00:00"
+  "updatedAt": "2026-11-28T05:16:41.091209+00:00"
 }
